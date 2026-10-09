@@ -72,6 +72,7 @@ main = do
     stopRuntime syntaxR
     assert "syntax errors reported" (not (null syntaxErrors))
   test "Marble Run: controls, jump, checkpoint, finish, restart" marbleGame
+  test "Marble Run: kinematic lift carries the marble and bridge assembly moves" marbleLift
   test "Knockdown: real Bullet collision topples a target" knockdownGame
   putStrLn "All engine integration checks passed."
 
@@ -105,6 +106,30 @@ marbleGame = do
   let V3 x _ z=position (transforms (world reset) IM.! marble)
   assert "restart resets to spawn" (abs x<0.1 && abs (z-8)<0.1 && null errors)
   where clamp=max (-1) . min 1;clampSpeed=max (-4) . min 4
+
+marbleLift :: IO ()
+marbleLift = do
+  p<-load "marble-run"
+  let w=world p
+      named n=case [e | (e,name)<-IM.toList (names w),name==n] of e:_->e;[]->error ("Missing level entity: "++n)
+      marble=named "Marble";lift=named "Sky lift";bridge=named "Turn right"
+      guide=named "Lift / guide 1"
+      ride=p {world=w {transforms=IM.adjust (\t->t {position=V3 (-6) 0.52 8}) marble (transforms w)}}
+  (r,started,_)<-startRuntime "projects/marble-run" ride
+  (finalR,final)<-foldM (\(runtime,current) _->do
+    (r',p',err,_)<-stepRuntime (1/120) [0,0,0,0] runtime current
+    assert (show err) (not (any (isInfixOf "Entity ") err))
+    pure (r',p')) (r,started) [1..540::Int]
+  stopRuntime finalR
+  let fw=world final
+      V3 x y z=position (transforms fw IM.! marble)
+      V3 _ ly _=position (transforms fw IM.! lift)
+      V3 _ gy _=position (transforms fw IM.! guide)
+      V3 _ _ bz=position (transforms fw IM.! bridge)
+  assert ("lift did not carry rider: "++show (x,y,z,ly)) (abs (x+6)<0.1 && abs (z-8)<0.1 && y>3.5 && abs (y-ly-1)<0.08)
+  assert "rider remains grounded" (grounded (bodies fw IM.! marble))
+  assert "lift decorations follow its collider" (abs (gy-ly-0.58)<0.001)
+  assert "bridge moved sideways" (abs (bz+5)>0.3)
 
 knockdownGame :: IO ()
 knockdownGame = do

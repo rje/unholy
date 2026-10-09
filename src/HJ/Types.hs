@@ -12,12 +12,12 @@ data Material = Material { albedo :: !V3, metallic :: !Float, roughness :: !Floa
 data Mesh = Mesh { geometry :: String, texture :: FilePath } deriving (Eq, Show, Read)
 data Light = Light { lightColor :: !V3, intensity :: !Float } deriving (Eq, Show, Read)
 data BodyShape = Box | Sphere deriving (Eq,Show,Read)
-data Body = Body { bodyShape :: !BodyShape, mass :: !Float, velocity :: !V3, restitution :: !Float, friction :: !Float, grounded :: !Bool }
+data Body = Body { bodyShape :: !BodyShape, mass :: !Float, velocity :: !V3, restitution :: !Float, friction :: !Float, grounded :: !Bool, kinematic :: !Bool }
   deriving (Eq,Show,Read)
 defaultBody :: Body
-defaultBody = Body Box 0 (V3 0 0 0) 0.15 0.6 False
+defaultBody = Body Box 0 (V3 0 0 0) 0.15 0.6 False False
 data Camera = Camera { eye :: !V3, target :: !V3, fov :: !Float } deriving (Eq, Show, Read)
-data Environment = Environment { sunDirection :: !V3, sunColor :: !V3, sunPower :: !Float, ambient :: !Float, exposure :: !Float }
+data Environment = Environment { sunDirection :: !V3, sunColor :: !V3, sunPower :: !Float, ambient :: !Float, exposure :: !Float, skyTop :: !V3, skyBottom :: !V3, fogDensity :: !Float, sunShadows :: !Bool }
   deriving (Eq, Show, Read)
 
 -- Each component has its own typed store. An entity is a stable, monotonic ID.
@@ -43,7 +43,7 @@ defaultMaterial = Material (V3 0.72 0.78 0.85) 0 0.4 0
 defaultCamera :: Camera
 defaultCamera = Camera (V3 10 7 11) (V3 0 1 0) 45
 defaultEnvironment :: Environment
-defaultEnvironment = Environment (V3 (-0.5) (-1) (-0.4)) (V3 1 0.92 0.82) 3 0.12 1
+defaultEnvironment = Environment (V3 (-0.5) (-1) (-0.4)) (V3 1 0.92 0.82) 3 0.12 1 (V3 0.067 0.098 0.145) (V3 0.125 0.173 0.208) 0 False
 emptyWorld :: World
 emptyWorld = World 1 IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty
 emptyProject :: String -> Project
@@ -87,7 +87,7 @@ validateWorld w
     componentIds = nub (concat [IM.keys (transforms w),IM.keys (meshes w),IM.keys (materials w),IM.keys (scripts w),IM.keys (lights w),IM.keys (bodies w)])
     badTransform (Transform p r s) = not (all validV [p,r,s]) || any (<=0) (vlist s)
     badMaterial (Material a m r e) = not (validV a) || any (\x -> x<0 || x>1) (vlist a) || not (all finite [m,r,e]) || m<0 || m>1 || r<0.04 || r>1 || e<0
-    badBody b = not (validV (velocity b) && all finite [mass b,restitution b,friction b]) || mass b<0 || restitution b<0 || restitution b>1 || friction b<0
+    badBody b = not (validV (velocity b) && all finite [mass b,restitution b,friction b]) || mass b<0 || restitution b<0 || restitution b>1 || friction b<0 || (kinematic b && mass b/=0)
 
 finite :: Float -> Bool
 finite x = not (isNaN x || isInfinite x)

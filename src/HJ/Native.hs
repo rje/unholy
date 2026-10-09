@@ -37,6 +37,9 @@ foreign import ccall unsafe "hj_unclip" unclip :: IO ()
 foreign import ccall unsafe "hj_focus" cFocus :: Ptr CFloat -> IO ()
 foreign import ccall unsafe "hj_get_camera" cGetCamera :: Ptr CFloat -> IO ()
 foreign import ccall unsafe "hj_scene_begin" cSceneBegin :: CInt -> CInt -> CInt -> CInt -> CInt -> Ptr CFloat -> Ptr CFloat -> CInt -> IO ()
+foreign import ccall unsafe "hj_shadow_begin" cShadowBegin :: Ptr CFloat -> Ptr CFloat -> IO ()
+foreign import ccall unsafe "hj_shadow_end" cShadowEnd :: IO ()
+foreign import ccall unsafe "hj_audio_pause" cAudioPause :: CInt -> IO ()
 foreign import ccall unsafe "hj_light" cLight :: CInt -> Ptr CFloat -> IO ()
 foreign import ccall unsafe "hj_light_count" cLightCount :: CInt -> IO ()
 foreign import ccall unsafe "hj_draw_entity" cDrawEntity :: CInt -> Ptr CFloat -> CString -> CString -> CInt -> IO ()
@@ -46,6 +49,8 @@ foreign import ccall unsafe "hj_scene_end" sceneEnd :: IO ()
 
 initWindow :: String -> FilePath -> IO Bool
 initWindow title path = withCString title $ \t -> withCString path $ \p -> (/=0) <$> cInit t p
+pauseAudio :: Bool -> IO ()
+pauseAudio pause = cAudioPause (if pause then 1 else 0)
 shouldClose :: IO Bool
 shouldClose = (/=0) <$> cShouldClose
 dimensions :: IO (Float,Float)
@@ -100,17 +105,19 @@ f = realToFrac
 drawScene :: FilePath -> Project -> (Float,Float,Float,Float) -> Bool -> Bool -> Maybe Entity -> IO (Maybe Entity)
 drawScene root p (x,y,w,h) edit grid selected = do
   let env=environment p
-  withFloats (cameraData (camera p)) $ \cam -> withFloats (vlist (sunDirection env)++vlist (sunColor env)++[sunPower env,ambient env,exposure env]) $ \en ->
+      drawEntities = forM_ (renderables (world p)) $ \(e,t,m,mat) ->
+        withFloats (componentData t mat) $ \d ->
+        withCString (if geometry m `elem` builtins then geometry m else root </> geometry m) $ \mesh ->
+        withCString (if null (texture m) then "" else root </> texture m) $ \tex -> cDrawEntity (fromIntegral e) d mesh tex (if Just e==selected then 1 else 0)
+  withFloats (cameraData (camera p)) $ \cam -> withFloats (vlist (sunDirection env)++vlist (sunColor env)++[sunPower env,ambient env,exposure env]++vlist (skyTop env)++vlist (skyBottom env)++[fogDensity env,if sunShadows env then 1 else 0]) $ \en -> do
+    when (sunShadows env) $ cShadowBegin cam en >> drawEntities >> cShadowEnd
     cSceneBegin (round x) (round y) (max 1 (round w)) (max 1 (round h)) (if edit then 1 else 0) cam en (if grid then 1 else 0)
   let ls=take 8 [(e,position t,l) | (e,l)<-imList (lights (world p)),Just t<-[imLookup e (transforms (world p))]]
   cLightCount (fromIntegral (length ls))
   forM_ (zip [0..] ls) $ \(i,(e,pos,l)) -> withFloats (vlist pos++vlist (lightColor l)++[intensity l]) $ \d -> do
     cLight i d
     when edit (cDrawLight d (if Just e==selected then 1 else 0))
-  forM_ (renderables (world p)) $ \(e,t,m,mat) ->
-    withFloats (componentData t mat) $ \d ->
-    withCString (if geometry m `elem` builtins then geometry m else root </> geometry m) $ \mesh ->
-    withCString (if null (texture m) then "" else root </> texture m) $ \tex -> cDrawEntity (fromIntegral e) d mesh tex (if Just e==selected then 1 else 0)
+  drawEntities
   picked<-fromIntegral <$> cPicked
   sceneEnd
   pure (if picked>0 then Just picked else selected)

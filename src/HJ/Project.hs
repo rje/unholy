@@ -22,7 +22,7 @@ projectJSON p = Object
   [ ("schemaVersion", Number 1), ("name", String (projectName p))
   , ("nextId", int (nextId w)), ("entities", Array (map entity (IM.toAscList (names w))))
   , ("camera", Object [("eye",vec (eye c)),("target",vec (target c)),("fov",num (fov c))])
-  , ("environment", Object [("sunDirection",vec (sunDirection env)),("sunColor",vec (sunColor env)),("sunPower",num (sunPower env)),("ambient",num (ambient env)),("exposure",num (exposure env))]) ]
+  , ("environment", Object [("sunDirection",vec (sunDirection env)),("sunColor",vec (sunColor env)),("sunPower",num (sunPower env)),("ambient",num (ambient env)),("exposure",num (exposure env)),("skyTop",vec (skyTop env)),("skyBottom",vec (skyBottom env)),("fogDensity",num (fogDensity env)),("sunShadows",Boolean (sunShadows env))]) ]
   where
     w=world p; c=camera p; env=environment p
     int=Number . fromIntegral; num=Number . realToFrac; vec=Array . map num . vlist
@@ -31,7 +31,7 @@ projectJSON p = Object
       ++ optional "material" mat (IM.lookup e (materials w))
       ++ optional "script" String (IM.lookup e (scripts w))
       ++ optional "light" (\l -> Object [("color",vec (lightColor l)),("intensity",num (intensity l))]) (IM.lookup e (lights w))
-      ++ optional "body" (\b -> Object [("shape",String (if bodyShape b==Box then "box" else "sphere")),("mass",num (mass b)),("velocity",vec (velocity b)),("restitution",num (restitution b)),("friction",num (friction b))]) (IM.lookup e (bodies w))
+      ++ optional "body" (\b -> Object [("shape",String (if bodyShape b==Box then "box" else "sphere")),("mass",num (mass b)),("velocity",vec (velocity b)),("restitution",num (restitution b)),("friction",num (friction b)),("kinematic",Boolean (kinematic b))]) (IM.lookup e (bodies w))
     optional k f = maybe [] (\v -> [(k,f v)])
     trans t = Object [("position",vec (position t)),("rotation",vec (rotation t)),("scale",vec (scale t))]
     mat m = Object [("albedo",vec (albedo m)),("metallic",num (metallic m)),("roughness",num (roughness m)),("emission",num (emission m))]
@@ -50,12 +50,19 @@ decodeProject input = do
   cam <- Camera <$> vfield "eye" c <*> vfield "target" c <*> floatField "fov" c
   en <- field "environment" j
   env <- Environment <$> vfield "sunDirection" en <*> vfield "sunColor" en <*> floatField "sunPower" en <*> floatField "ambient" en <*> floatField "exposure" en
+    <*> optionalField "skyTop" (vfield "skyTop" en) (skyTop defaultEnvironment) en
+    <*> optionalField "skyBottom" (vfield "skyBottom" en) (skyBottom defaultEnvironment) en
+    <*> optionalField "fogDensity" (floatField "fogDensity" en) 0 en
+    <*> optionalField "sunShadows" (field "sunShadows" en >>= boolean) False en
   unless (fov cam>1 && fov cam<179 && eye cam/=target cam) (Left "Invalid camera")
-  unless (all finite [sunPower env,ambient env,exposure env] && sunPower env>=0 && ambient env>=0 && exposure env>0 && sunDirection env/=V3 0 0 0) (Left "Invalid environment")
+  unless (all finite [sunPower env,ambient env,exposure env,fogDensity env] && sunPower env>=0 && ambient env>=0 && exposure env>0 && fogDensity env>=0 && sunDirection env/=V3 0 0 0 && validV (skyTop env) && validV (skyBottom env)) (Left "Invalid environment")
   mapM_ assetPath (assetReferences w)
   pure (Project n w cam env)
   where
     floatField k j = field k j >>= number >>= finiteFloat
+    boolean (Boolean b) = Right b
+    boolean _ = Left "Expected boolean"
+    optionalField k value fallback j = object j >>= \fs -> if k `elem` map fst fs then value else Right fallback
     finiteFloat x = let f=realToFrac x in if finite f then Right f else Left "Number exceeds Float range"
     vfield k j = field k j >>= array >>= \xs -> if length xs/=3 then Left ("Expected vec3: "++k) else fromListV <$> mapM (number >=> finiteFloat) xs
     (>=>) a b x = a x >>= b
@@ -78,7 +85,7 @@ decodeProject input = do
       body <- optional "body" (\o -> do
         shape<-field "shape" o >>= string
         sh<-case shape of "box"->Right Box; "sphere"->Right Sphere; _->Left "Unknown physics shape"
-        Body sh <$> floatField "mass" o <*> vfield "velocity" o <*> floatField "restitution" o <*> floatField "friction" o <*> pure False)
+        Body sh <$> floatField "mass" o <*> vfield "velocity" o <*> floatField "restitution" o <*> floatField "friction" o <*> pure False <*> optionalField "kinematic" (field "kinematic" o >>= boolean) False o)
       let put v table = maybe table (\x -> IM.insert e x table) v
       pure w {names=IM.insert e n (names w),transforms=IM.insert e tr (transforms w),meshes=put m (meshes w),materials=put mat (materials w),scripts=put script (scripts w),lights=put light (lights w),bodies=put body (bodies w)}
 

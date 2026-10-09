@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "name": "Marble Run",
-  "nextId": 13,
+  "nextId": 166,
   "entities": [
     {
       "name": "Marble",
@@ -24,16 +24,16 @@
       },
       "mesh": {
         "geometry": "sphere",
-        "texture": ""
+        "texture": "assets/textures/porcelain-marble.png"
       },
       "material": {
         "albedo": [
-          0.94,
-          0.73,
-          0.28
+          1,
+          1,
+          1
         ],
-        "metallic": 0.85,
-        "roughness": 0.18,
+        "metallic": 0.25,
+        "roughness": 0.13,
         "emission": 0
       },
       "script": "assets/scripts/marble.lua",
@@ -46,7 +46,7 @@
           0
         ],
         "restitution": 0.1,
-        "friction": 0.4
+        "friction": 0.55
       },
       "id": 1
     },
@@ -70,17 +70,17 @@
         ]
       },
       "mesh": {
-        "geometry": "cube",
-        "texture": ""
+        "geometry": "assets/models/start.obj",
+        "texture": "assets/textures/temple-stone.png"
       },
       "material": {
         "albedo": [
-          0.28,
-          0.32,
-          0.39
+          0.96,
+          0.94,
+          0.88
         ],
-        "metallic": 0.2,
-        "roughness": 0.45,
+        "metallic": 0,
+        "roughness": 0.55,
         "emission": 0
       },
       "body": {
@@ -97,6 +97,251 @@
       "id": 2
     },
     {
+      "name": "Start island / brass hull",
+      "transform": {
+        "position": [
+          0,
+          -0.78,
+          8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          7.28,
+          0.28,
+          6.24
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/start.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.72,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 3
+    },
+    {
+      "name": "Start island / lower rim",
+      "transform": {
+        "position": [
+          0,
+          -1.15,
+          8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          6.510000000000001,
+          0.22,
+          5.58
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/start.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.11,
+          0.24,
+          0.28
+        ],
+        "metallic": 0.55,
+        "roughness": 0.35,
+        "emission": 0
+      },
+      "id": 4
+    },
+    {
+      "name": "Start island / hanging rock",
+      "transform": {
+        "position": [
+          0,
+          -2.3,
+          8
+        ],
+        "rotation": [
+          0,
+          17,
+          0
+        ],
+        "scale": [
+          5.95,
+          3.5,
+          5.1
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/island.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.5,
+          0.57,
+          0.53
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 5
+    },
+    {
+      "name": "Start island / edge -1",
+      "transform": {
+        "position": [
+          -3.4,
+          0.04,
+          8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.13,
+          0.11,
+          5.6
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.7,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 6
+    },
+    {
+      "name": "Start island / guide -1",
+      "transform": {
+        "position": [
+          -3.26,
+          0.08,
+          8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.055,
+          0.05,
+          5.45
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 1.6
+      },
+      "id": 7
+    },
+    {
+      "name": "Start island / edge 1",
+      "transform": {
+        "position": [
+          3.4,
+          0.04,
+          8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.13,
+          0.11,
+          5.6
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.7,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 8
+    },
+    {
+      "name": "Start island / guide 1",
+      "transform": {
+        "position": [
+          3.26,
+          0.08,
+          8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.055,
+          0.05,
+          5.45
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 1.6
+      },
+      "id": 9
+    },
+    {
       "name": "Blue bridge / approach",
       "transform": {
         "position": [
@@ -110,23 +355,23 @@
           0
         ],
         "scale": [
-          2.8,
+          3.2,
           1,
           4
         ]
       },
       "mesh": {
-        "geometry": "cube",
-        "texture": ""
+        "geometry": "assets/models/approach.obj",
+        "texture": "assets/textures/temple-stone.png"
       },
       "material": {
         "albedo": [
-          0.17,
-          0.42,
-          0.7
+          0.96,
+          0.94,
+          0.88
         ],
-        "metallic": 0.2,
-        "roughness": 0.45,
+        "metallic": 0,
+        "roughness": 0.55,
         "emission": 0
       },
       "body": {
@@ -140,7 +385,252 @@
         "restitution": 0.1,
         "friction": 0.55
       },
-      "id": 3
+      "id": 10
+    },
+    {
+      "name": "Blue bridge / approach / brass hull",
+      "transform": {
+        "position": [
+          0,
+          -0.78,
+          3
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          3.3280000000000003,
+          0.28,
+          4.16
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/approach.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.72,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 11
+    },
+    {
+      "name": "Blue bridge / approach / lower rim",
+      "transform": {
+        "position": [
+          0,
+          -1.15,
+          3
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.9760000000000004,
+          0.22,
+          3.72
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/approach.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.11,
+          0.24,
+          0.28
+        ],
+        "metallic": 0.55,
+        "roughness": 0.35,
+        "emission": 0
+      },
+      "id": 12
+    },
+    {
+      "name": "Blue bridge / approach / hanging rock",
+      "transform": {
+        "position": [
+          0,
+          -2.3,
+          3
+        ],
+        "rotation": [
+          0,
+          17,
+          0
+        ],
+        "scale": [
+          2.72,
+          3.5,
+          3.4
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/island.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.5,
+          0.57,
+          0.53
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 13
+    },
+    {
+      "name": "Blue bridge / approach / edge -1",
+      "transform": {
+        "position": [
+          -1.5,
+          0.04,
+          3
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.13,
+          0.11,
+          3.6
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.7,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 14
+    },
+    {
+      "name": "Blue bridge / approach / guide -1",
+      "transform": {
+        "position": [
+          -1.36,
+          0.08,
+          3
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.055,
+          0.05,
+          3.45
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 1.6
+      },
+      "id": 15
+    },
+    {
+      "name": "Blue bridge / approach / edge 1",
+      "transform": {
+        "position": [
+          1.5,
+          0.04,
+          3
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.13,
+          0.11,
+          3.6
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.7,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 16
+    },
+    {
+      "name": "Blue bridge / approach / guide 1",
+      "transform": {
+        "position": [
+          1.36,
+          0.08,
+          3
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.055,
+          0.05,
+          3.45
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 1.6
+      },
+      "id": 17
     },
     {
       "name": "Blue bridge / landing",
@@ -156,23 +646,23 @@
           0
         ],
         "scale": [
-          2.8,
+          3.2,
           1,
           3.5
         ]
       },
       "mesh": {
-        "geometry": "cube",
-        "texture": ""
+        "geometry": "assets/models/landing.obj",
+        "texture": "assets/textures/temple-stone.png"
       },
       "material": {
         "albedo": [
-          0.17,
-          0.42,
-          0.7
+          0.96,
+          0.94,
+          0.88
         ],
-        "metallic": 0.2,
-        "roughness": 0.45,
+        "metallic": 0,
+        "roughness": 0.55,
         "emission": 0
       },
       "body": {
@@ -186,7 +676,252 @@
         "restitution": 0.1,
         "friction": 0.55
       },
-      "id": 4
+      "id": 18
+    },
+    {
+      "name": "Blue bridge / landing / brass hull",
+      "transform": {
+        "position": [
+          0,
+          -0.78,
+          -1.75
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          3.3280000000000003,
+          0.28,
+          3.64
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/landing.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.72,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 19
+    },
+    {
+      "name": "Blue bridge / landing / lower rim",
+      "transform": {
+        "position": [
+          0,
+          -1.15,
+          -1.75
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.9760000000000004,
+          0.22,
+          3.2550000000000003
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/landing.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.11,
+          0.24,
+          0.28
+        ],
+        "metallic": 0.55,
+        "roughness": 0.35,
+        "emission": 0
+      },
+      "id": 20
+    },
+    {
+      "name": "Blue bridge / landing / hanging rock",
+      "transform": {
+        "position": [
+          0,
+          -2.3,
+          -1.75
+        ],
+        "rotation": [
+          0,
+          17,
+          0
+        ],
+        "scale": [
+          2.72,
+          3.5,
+          2.975
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/island.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.5,
+          0.57,
+          0.53
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 21
+    },
+    {
+      "name": "Blue bridge / landing / edge -1",
+      "transform": {
+        "position": [
+          -1.5,
+          0.04,
+          -1.75
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.13,
+          0.11,
+          3.1
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.7,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 22
+    },
+    {
+      "name": "Blue bridge / landing / guide -1",
+      "transform": {
+        "position": [
+          -1.36,
+          0.08,
+          -1.75
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.055,
+          0.05,
+          2.95
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 1.6
+      },
+      "id": 23
+    },
+    {
+      "name": "Blue bridge / landing / edge 1",
+      "transform": {
+        "position": [
+          1.5,
+          0.04,
+          -1.75
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.13,
+          0.11,
+          3.1
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.7,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 24
+    },
+    {
+      "name": "Blue bridge / landing / guide 1",
+      "transform": {
+        "position": [
+          1.36,
+          0.08,
+          -1.75
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.055,
+          0.05,
+          2.95
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 1.6
+      },
+      "id": 25
     },
     {
       "name": "Checkpoint island",
@@ -208,17 +943,17 @@
         ]
       },
       "mesh": {
-        "geometry": "cube",
-        "texture": ""
+        "geometry": "assets/models/checkpoint.obj",
+        "texture": "assets/textures/temple-stone.png"
       },
       "material": {
         "albedo": [
-          0.21,
-          0.53,
-          0.41
+          0.96,
+          0.94,
+          0.88
         ],
-        "metallic": 0.2,
-        "roughness": 0.45,
+        "metallic": 0,
+        "roughness": 0.55,
         "emission": 0
       },
       "body": {
@@ -232,7 +967,252 @@
         "restitution": 0.1,
         "friction": 0.55
       },
-      "id": 5
+      "id": 26
+    },
+    {
+      "name": "Checkpoint island / brass hull",
+      "transform": {
+        "position": [
+          0,
+          -0.78,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          6.24,
+          0.28,
+          4.16
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/checkpoint.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.72,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 27
+    },
+    {
+      "name": "Checkpoint island / lower rim",
+      "transform": {
+        "position": [
+          0,
+          -1.15,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          5.58,
+          0.22,
+          3.72
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/checkpoint.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.11,
+          0.24,
+          0.28
+        ],
+        "metallic": 0.55,
+        "roughness": 0.35,
+        "emission": 0
+      },
+      "id": 28
+    },
+    {
+      "name": "Checkpoint island / hanging rock",
+      "transform": {
+        "position": [
+          0,
+          -2.3,
+          -5
+        ],
+        "rotation": [
+          0,
+          17,
+          0
+        ],
+        "scale": [
+          5.1,
+          3.5,
+          3.4
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/island.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.5,
+          0.57,
+          0.53
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 29
+    },
+    {
+      "name": "Checkpoint island / edge -1",
+      "transform": {
+        "position": [
+          -2.9,
+          0.04,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.13,
+          0.11,
+          3.6
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.7,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 30
+    },
+    {
+      "name": "Checkpoint island / guide -1",
+      "transform": {
+        "position": [
+          -2.76,
+          0.08,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.055,
+          0.05,
+          3.45
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 1.6
+      },
+      "id": 31
+    },
+    {
+      "name": "Checkpoint island / edge 1",
+      "transform": {
+        "position": [
+          2.9,
+          0.04,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.13,
+          0.11,
+          3.6
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.7,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 32
+    },
+    {
+      "name": "Checkpoint island / guide 1",
+      "transform": {
+        "position": [
+          2.76,
+          0.08,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.055,
+          0.05,
+          3.45
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 1.6
+      },
+      "id": 33
     },
     {
       "name": "Turn right",
@@ -248,23 +1228,23 @@
           0
         ],
         "scale": [
-          4,
+          4.4,
           1,
-          2.6
+          4
         ]
       },
       "mesh": {
-        "geometry": "cube",
-        "texture": ""
+        "geometry": "assets/models/shuttle.obj",
+        "texture": "assets/textures/temple-stone.png"
       },
       "material": {
         "albedo": [
-          0.17,
-          0.42,
-          0.7
+          0.96,
+          0.94,
+          0.88
         ],
-        "metallic": 0.2,
-        "roughness": 0.45,
+        "metallic": 0,
+        "roughness": 0.55,
         "emission": 0
       },
       "body": {
@@ -276,9 +1256,220 @@
           0
         ],
         "restitution": 0.1,
-        "friction": 0.55
+        "friction": 0.55,
+        "kinematic": true
       },
-      "id": 6
+      "id": 34
+    },
+    {
+      "name": "Shuttle / brass hull",
+      "transform": {
+        "position": [
+          5,
+          -0.78,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          4.5760000000000005,
+          0.28,
+          4.16
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/shuttle.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.72,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 35
+    },
+    {
+      "name": "Shuttle / lower rim",
+      "transform": {
+        "position": [
+          5,
+          -1.15,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          4.0920000000000005,
+          0.22,
+          3.72
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/shuttle.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.11,
+          0.24,
+          0.28
+        ],
+        "metallic": 0.55,
+        "roughness": 0.35,
+        "emission": 0
+      },
+      "id": 36
+    },
+    {
+      "name": "Shuttle / edge -1",
+      "transform": {
+        "position": [
+          2.9,
+          0.04,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.13,
+          0.11,
+          3.6
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.7,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 37
+    },
+    {
+      "name": "Shuttle / guide -1",
+      "transform": {
+        "position": [
+          3.04,
+          0.08,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.055,
+          0.05,
+          3.45
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 1.6
+      },
+      "id": 38
+    },
+    {
+      "name": "Shuttle / edge 1",
+      "transform": {
+        "position": [
+          7.1,
+          0.04,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.13,
+          0.11,
+          3.6
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.7,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 39
+    },
+    {
+      "name": "Shuttle / guide 1",
+      "transform": {
+        "position": [
+          6.96,
+          0.08,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.055,
+          0.05,
+          3.45
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 1.6
+      },
+      "id": 40
     },
     {
       "name": "Finish island",
@@ -300,17 +1491,17 @@
         ]
       },
       "mesh": {
-        "geometry": "cube",
-        "texture": ""
+        "geometry": "assets/models/finish.obj",
+        "texture": "assets/textures/temple-stone.png"
       },
       "material": {
         "albedo": [
-          0.63,
-          0.45,
-          0.18
+          0.96,
+          0.94,
+          0.88
         ],
-        "metallic": 0.2,
-        "roughness": 0.45,
+        "metallic": 0,
+        "roughness": 0.55,
         "emission": 0
       },
       "body": {
@@ -324,14 +1515,1315 @@
         "restitution": 0.1,
         "friction": 0.55
       },
-      "id": 7
+      "id": 41
+    },
+    {
+      "name": "Finish island / brass hull",
+      "transform": {
+        "position": [
+          9,
+          -0.78,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          4.16,
+          0.28,
+          6.24
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/finish.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.72,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 42
+    },
+    {
+      "name": "Finish island / lower rim",
+      "transform": {
+        "position": [
+          9,
+          -1.15,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          3.72,
+          0.22,
+          5.58
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/finish.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.11,
+          0.24,
+          0.28
+        ],
+        "metallic": 0.55,
+        "roughness": 0.35,
+        "emission": 0
+      },
+      "id": 43
+    },
+    {
+      "name": "Finish island / hanging rock",
+      "transform": {
+        "position": [
+          9,
+          -2.3,
+          -5
+        ],
+        "rotation": [
+          0,
+          17,
+          0
+        ],
+        "scale": [
+          3.4,
+          3.5,
+          5.1
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/island.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.5,
+          0.57,
+          0.53
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 44
+    },
+    {
+      "name": "Finish island / edge -1",
+      "transform": {
+        "position": [
+          7.1,
+          0.04,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.13,
+          0.11,
+          5.6
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.7,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 45
+    },
+    {
+      "name": "Finish island / guide -1",
+      "transform": {
+        "position": [
+          7.24,
+          0.08,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.055,
+          0.05,
+          5.45
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 1.6
+      },
+      "id": 46
+    },
+    {
+      "name": "Finish island / edge 1",
+      "transform": {
+        "position": [
+          10.9,
+          0.04,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.13,
+          0.11,
+          5.6
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.7,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 47
+    },
+    {
+      "name": "Finish island / guide 1",
+      "transform": {
+        "position": [
+          10.76,
+          0.08,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.055,
+          0.05,
+          5.45
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 1.6
+      },
+      "id": 48
+    },
+    {
+      "name": "Sky lift",
+      "transform": {
+        "position": [
+          -6,
+          -0.5,
+          8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          3,
+          1,
+          3
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/lift.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "body": {
+        "shape": "box",
+        "mass": 0,
+        "velocity": [
+          0,
+          0,
+          0
+        ],
+        "restitution": 0.1,
+        "friction": 0.55,
+        "kinematic": true
+      },
+      "id": 49
+    },
+    {
+      "name": "Lift / brass hull",
+      "transform": {
+        "position": [
+          -6,
+          -0.78,
+          8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          3.12,
+          0.28,
+          3.12
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/lift.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.72,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 50
+    },
+    {
+      "name": "Lift / lower rim",
+      "transform": {
+        "position": [
+          -6,
+          -1.15,
+          8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.79,
+          0.22,
+          2.79
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/lift.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.11,
+          0.24,
+          0.28
+        ],
+        "metallic": 0.55,
+        "roughness": 0.35,
+        "emission": 0
+      },
+      "id": 51
+    },
+    {
+      "name": "Lift / edge -1",
+      "transform": {
+        "position": [
+          -7.4,
+          0.04,
+          8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.13,
+          0.11,
+          2.6
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.7,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 52
+    },
+    {
+      "name": "Lift / guide -1",
+      "transform": {
+        "position": [
+          -7.26,
+          0.08,
+          8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.055,
+          0.05,
+          2.45
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 1.6
+      },
+      "id": 53
+    },
+    {
+      "name": "Lift / edge 1",
+      "transform": {
+        "position": [
+          -4.6,
+          0.04,
+          8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.13,
+          0.11,
+          2.6
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.7,
+        "roughness": 0.28,
+        "emission": 0
+      },
+      "id": 54
+    },
+    {
+      "name": "Lift / guide 1",
+      "transform": {
+        "position": [
+          -4.74,
+          0.08,
+          8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.055,
+          0.05,
+          2.45
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 1.6
+      },
+      "id": 55
+    },
+    {
+      "name": "Lift boarding bridge",
+      "transform": {
+        "position": [
+          -4.1,
+          -0.5,
+          8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          1,
+          2.3
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "body": {
+        "shape": "box",
+        "mass": 0,
+        "velocity": [
+          0,
+          0,
+          0
+        ],
+        "restitution": 0.1,
+        "friction": 0.55
+      },
+      "id": 56
+    },
+    {
+      "name": "Approach guard -1",
+      "transform": {
+        "position": [
+          -1.55,
+          0.17,
+          3
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.14,
+          0.34,
+          3.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.78,
+          0.84,
+          0.84
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "body": {
+        "shape": "box",
+        "mass": 0,
+        "velocity": [
+          0,
+          0,
+          0
+        ],
+        "restitution": 0.1,
+        "friction": 0.55
+      },
+      "id": 57
+    },
+    {
+      "name": "Landing guard -1",
+      "transform": {
+        "position": [
+          -1.55,
+          0.17,
+          -1.6
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.14,
+          0.34,
+          2.8
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.78,
+          0.84,
+          0.84
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "body": {
+        "shape": "box",
+        "mass": 0,
+        "velocity": [
+          0,
+          0,
+          0
+        ],
+        "restitution": 0.1,
+        "friction": 0.55
+      },
+      "id": 58
+    },
+    {
+      "name": "Start rail -1 5.25",
+      "transform": {
+        "position": [
+          -3.46,
+          0.22,
+          5.25
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.16,
+          0.44,
+          0.65
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "body": {
+        "shape": "box",
+        "mass": 0,
+        "velocity": [
+          0,
+          0,
+          0
+        ],
+        "restitution": 0.1,
+        "friction": 0.55
+      },
+      "id": 59
+    },
+    {
+      "name": "Start rail -1 10.75",
+      "transform": {
+        "position": [
+          -3.46,
+          0.22,
+          10.75
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.16,
+          0.44,
+          0.65
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "body": {
+        "shape": "box",
+        "mass": 0,
+        "velocity": [
+          0,
+          0,
+          0
+        ],
+        "restitution": 0.1,
+        "friction": 0.55
+      },
+      "id": 60
+    },
+    {
+      "name": "Approach guard 1",
+      "transform": {
+        "position": [
+          1.55,
+          0.17,
+          3
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.14,
+          0.34,
+          3.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.78,
+          0.84,
+          0.84
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "body": {
+        "shape": "box",
+        "mass": 0,
+        "velocity": [
+          0,
+          0,
+          0
+        ],
+        "restitution": 0.1,
+        "friction": 0.55
+      },
+      "id": 61
+    },
+    {
+      "name": "Landing guard 1",
+      "transform": {
+        "position": [
+          1.55,
+          0.17,
+          -1.6
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.14,
+          0.34,
+          2.8
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.78,
+          0.84,
+          0.84
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "body": {
+        "shape": "box",
+        "mass": 0,
+        "velocity": [
+          0,
+          0,
+          0
+        ],
+        "restitution": 0.1,
+        "friction": 0.55
+      },
+      "id": 62
+    },
+    {
+      "name": "Start rail 1 5.25",
+      "transform": {
+        "position": [
+          3.46,
+          0.22,
+          5.25
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.16,
+          0.44,
+          0.65
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "body": {
+        "shape": "box",
+        "mass": 0,
+        "velocity": [
+          0,
+          0,
+          0
+        ],
+        "restitution": 0.1,
+        "friction": 0.55
+      },
+      "id": 63
+    },
+    {
+      "name": "Start rail 1 10.75",
+      "transform": {
+        "position": [
+          3.46,
+          0.22,
+          10.75
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.16,
+          0.44,
+          0.65
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "body": {
+        "shape": "box",
+        "mass": 0,
+        "velocity": [
+          0,
+          0,
+          0
+        ],
+        "restitution": 0.1,
+        "friction": 0.55
+      },
+      "id": 64
+    },
+    {
+      "name": "Route dash 0",
+      "transform": {
+        "position": [
+          0,
+          0.035,
+          9
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.16,
+          0.045,
+          0.55
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 0.7
+      },
+      "id": 65
+    },
+    {
+      "name": "Route dash 1",
+      "transform": {
+        "position": [
+          0,
+          0.035,
+          7.7
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.16,
+          0.045,
+          0.55
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 0.7
+      },
+      "id": 66
+    },
+    {
+      "name": "Route dash 2",
+      "transform": {
+        "position": [
+          0,
+          0.035,
+          6.3
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.16,
+          0.045,
+          0.55
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 0.7
+      },
+      "id": 67
+    },
+    {
+      "name": "Route dash 3",
+      "transform": {
+        "position": [
+          0,
+          0.035,
+          4.7
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.16,
+          0.045,
+          0.55
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 0.7
+      },
+      "id": 68
+    },
+    {
+      "name": "Route dash 4",
+      "transform": {
+        "position": [
+          0,
+          0.035,
+          3.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.16,
+          0.045,
+          0.55
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 0.7
+      },
+      "id": 69
+    },
+    {
+      "name": "Route dash 5",
+      "transform": {
+        "position": [
+          0,
+          0.035,
+          2.3
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.16,
+          0.045,
+          0.55
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 0.7
+      },
+      "id": 70
+    },
+    {
+      "name": "Route dash 6",
+      "transform": {
+        "position": [
+          0,
+          0.035,
+          -0.55
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.16,
+          0.045,
+          0.55
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 0.7
+      },
+      "id": 71
+    },
+    {
+      "name": "Route dash 7",
+      "transform": {
+        "position": [
+          0,
+          0.035,
+          -1.8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.16,
+          0.045,
+          0.55
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 0.7
+      },
+      "id": 72
+    },
+    {
+      "name": "Route dash 8",
+      "transform": {
+        "position": [
+          0,
+          0.035,
+          -3.2
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.16,
+          0.045,
+          0.55
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 0.7
+      },
+      "id": 73
+    },
+    {
+      "name": "Jump lip 1.15",
+      "transform": {
+        "position": [
+          0,
+          0.04,
+          1.15
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.7,
+          0.07,
+          0.13
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.65,
+        "roughness": 0.27,
+        "emission": 0
+      },
+      "id": 74
+    },
+    {
+      "name": "Jump lip -0.13",
+      "transform": {
+        "position": [
+          0,
+          0.04,
+          -0.13
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.7,
+          0.07,
+          0.13
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.65,
+        "roughness": 0.27,
+        "emission": 0
+      },
+      "id": 75
     },
     {
       "name": "Checkpoint beacon",
       "transform": {
         "position": [
           0,
-          0.18,
+          0.12,
           -5
         ],
         "rotation": [
@@ -340,9 +2832,9 @@
           0
         ],
         "scale": [
-          1.6,
-          1.6,
-          1.6
+          1.9,
+          1.9,
+          1.9
         ]
       },
       "mesh": {
@@ -351,22 +2843,22 @@
       },
       "material": {
         "albedo": [
-          0.22,
-          0.68,
-          0.42
+          0.25,
+          0.71,
+          0.68
         ],
-        "metallic": 0.1,
-        "roughness": 0.4,
+        "metallic": 0.25,
+        "roughness": 0.3,
         "emission": 0.5
       },
-      "id": 8
+      "id": 76
     },
     {
-      "name": "Finish ring",
+      "name": "Checkpoint medallion",
       "transform": {
         "position": [
-          9,
-          1.4,
+          0,
+          -0.02,
           -5
         ],
         "rotation": [
@@ -375,9 +2867,44 @@
           0
         ],
         "scale": [
-          2.2,
-          2.2,
-          2.2
+          2.4,
+          0.14,
+          2.4
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.57,
+          0.83,
+          0.79
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 77
+    },
+    {
+      "name": "Finish ring",
+      "transform": {
+        "position": [
+          9,
+          1.4,
+          -5.7
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.4,
+          2.4,
+          2.4
         ]
       },
       "mesh": {
@@ -386,114 +2913,3043 @@
       },
       "material": {
         "albedo": [
-          1,
-          0.7,
-          0.18
+          0.82,
+          0.59,
+          0.27
         ],
-        "metallic": 0.7,
-        "roughness": 0.25,
-        "emission": 0.5
+        "metallic": 0.72,
+        "roughness": 0.18,
+        "emission": 0.3
       },
-      "id": 9
+      "id": 78
     },
     {
-      "name": "Start rail",
-      "transform": {
-        "position": [
-          -3.6,
-          0.2,
-          8
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": [
-          0.2,
-          0.5,
-          6
-        ]
-      },
-      "mesh": {
-        "geometry": "cube",
-        "texture": ""
-      },
-      "material": {
-        "albedo": [
-          0.34,
-          0.38,
-          0.45
-        ],
-        "metallic": 0.5,
-        "roughness": 0.3,
-        "emission": 0
-      },
-      "body": {
-        "shape": "box",
-        "mass": 0,
-        "velocity": [
-          0,
-          0,
-          0
-        ],
-        "restitution": 0.1,
-        "friction": 0.55
-      },
-      "id": 10
-    },
-    {
-      "name": "Start rail",
-      "transform": {
-        "position": [
-          3.6,
-          0.2,
-          8
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": [
-          0.2,
-          0.5,
-          6
-        ]
-      },
-      "mesh": {
-        "geometry": "cube",
-        "texture": ""
-      },
-      "material": {
-        "albedo": [
-          0.34,
-          0.38,
-          0.45
-        ],
-        "metallic": 0.5,
-        "roughness": 0.3,
-        "emission": 0
-      },
-      "body": {
-        "shape": "box",
-        "mass": 0,
-        "velocity": [
-          0,
-          0,
-          0
-        ],
-        "restitution": 0.1,
-        "friction": 0.55
-      },
-      "id": 11
-    },
-    {
-      "name": "Finish spotlight",
+      "name": "Finish arch",
       "transform": {
         "position": [
           9,
-          5,
+          1.4,
+          -7.05
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1.8,
+          2.8,
+          1.1
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/gateway.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 79
+    },
+    {
+      "name": "Finish arch / gold inset",
+      "transform": {
+        "position": [
+          9,
+          1.4,
+          -6.83
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1.72,
+          2.68,
+          0.48
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/gateway.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.75,
+        "roughness": 0.24,
+        "emission": 0
+      },
+      "id": 80
+    },
+    {
+      "name": "Temple pillar -2.7 6",
+      "transform": {
+        "position": [
+          -2.7,
+          1.4,
+          6
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.65,
+          2.8,
+          0.65
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 81
+    },
+    {
+      "name": "Pillar collar -2.7 6",
+      "transform": {
+        "position": [
+          -2.7,
+          1.36,
+          6
+        ],
+        "rotation": [
+          90,
+          0,
+          0
+        ],
+        "scale": [
+          0.5,
+          0.5,
+          0.5
+        ]
+      },
+      "mesh": {
+        "geometry": "torus",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.8,
+        "roughness": 0.25,
+        "emission": 0
+      },
+      "id": 82
+    },
+    {
+      "name": "Lantern -2.7 6",
+      "transform": {
+        "position": [
+          -2.7,
+          2.95,
+          6
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.22,
+          0.22,
+          0.22
+        ]
+      },
+      "mesh": {
+        "geometry": "sphere",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 2.4
+      },
+      "id": 83
+    },
+    {
+      "name": "Temple pillar 2.7 6",
+      "transform": {
+        "position": [
+          2.7,
+          1.4,
+          6
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.65,
+          2.8,
+          0.65
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 84
+    },
+    {
+      "name": "Pillar collar 2.7 6",
+      "transform": {
+        "position": [
+          2.7,
+          1.36,
+          6
+        ],
+        "rotation": [
+          90,
+          0,
+          0
+        ],
+        "scale": [
+          0.5,
+          0.5,
+          0.5
+        ]
+      },
+      "mesh": {
+        "geometry": "torus",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.8,
+        "roughness": 0.25,
+        "emission": 0
+      },
+      "id": 85
+    },
+    {
+      "name": "Lantern 2.7 6",
+      "transform": {
+        "position": [
+          2.7,
+          2.95,
+          6
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.22,
+          0.22,
+          0.22
+        ]
+      },
+      "mesh": {
+        "geometry": "sphere",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 2.4
+      },
+      "id": 86
+    },
+    {
+      "name": "Temple pillar -2.45 -6.2",
+      "transform": {
+        "position": [
+          -2.45,
+          1.4,
+          -6.2
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.65,
+          2.8,
+          0.65
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 87
+    },
+    {
+      "name": "Pillar collar -2.45 -6.2",
+      "transform": {
+        "position": [
+          -2.45,
+          1.36,
+          -6.2
+        ],
+        "rotation": [
+          90,
+          0,
+          0
+        ],
+        "scale": [
+          0.5,
+          0.5,
+          0.5
+        ]
+      },
+      "mesh": {
+        "geometry": "torus",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.8,
+        "roughness": 0.25,
+        "emission": 0
+      },
+      "id": 88
+    },
+    {
+      "name": "Lantern -2.45 -6.2",
+      "transform": {
+        "position": [
+          -2.45,
+          2.95,
+          -6.2
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.22,
+          0.22,
+          0.22
+        ]
+      },
+      "mesh": {
+        "geometry": "sphere",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 2.4
+      },
+      "id": 89
+    },
+    {
+      "name": "Temple pillar 2.45 -6.2",
+      "transform": {
+        "position": [
+          2.45,
+          1.4,
+          -6.2
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.65,
+          2.8,
+          0.65
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 90
+    },
+    {
+      "name": "Pillar collar 2.45 -6.2",
+      "transform": {
+        "position": [
+          2.45,
+          1.36,
+          -6.2
+        ],
+        "rotation": [
+          90,
+          0,
+          0
+        ],
+        "scale": [
+          0.5,
+          0.5,
+          0.5
+        ]
+      },
+      "mesh": {
+        "geometry": "torus",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.8,
+        "roughness": 0.25,
+        "emission": 0
+      },
+      "id": 91
+    },
+    {
+      "name": "Lantern 2.45 -6.2",
+      "transform": {
+        "position": [
+          2.45,
+          2.95,
+          -6.2
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.22,
+          0.22,
+          0.22
+        ]
+      },
+      "mesh": {
+        "geometry": "sphere",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 2.4
+      },
+      "id": 92
+    },
+    {
+      "name": "Temple pillar 7.6 -7.1",
+      "transform": {
+        "position": [
+          7.6,
+          1.4,
+          -7.1
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.65,
+          2.8,
+          0.65
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 93
+    },
+    {
+      "name": "Pillar collar 7.6 -7.1",
+      "transform": {
+        "position": [
+          7.6,
+          1.36,
+          -7.1
+        ],
+        "rotation": [
+          90,
+          0,
+          0
+        ],
+        "scale": [
+          0.5,
+          0.5,
+          0.5
+        ]
+      },
+      "mesh": {
+        "geometry": "torus",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.8,
+        "roughness": 0.25,
+        "emission": 0
+      },
+      "id": 94
+    },
+    {
+      "name": "Lantern 7.6 -7.1",
+      "transform": {
+        "position": [
+          7.6,
+          2.95,
+          -7.1
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.22,
+          0.22,
+          0.22
+        ]
+      },
+      "mesh": {
+        "geometry": "sphere",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 2.4
+      },
+      "id": 95
+    },
+    {
+      "name": "Temple pillar 10.4 -7.1",
+      "transform": {
+        "position": [
+          10.4,
+          1.4,
+          -7.1
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.65,
+          2.8,
+          0.65
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 96
+    },
+    {
+      "name": "Pillar collar 10.4 -7.1",
+      "transform": {
+        "position": [
+          10.4,
+          1.36,
+          -7.1
+        ],
+        "rotation": [
+          90,
+          0,
+          0
+        ],
+        "scale": [
+          0.5,
+          0.5,
+          0.5
+        ]
+      },
+      "mesh": {
+        "geometry": "torus",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.8,
+        "roughness": 0.25,
+        "emission": 0
+      },
+      "id": 97
+    },
+    {
+      "name": "Lantern 10.4 -7.1",
+      "transform": {
+        "position": [
+          10.4,
+          2.95,
+          -7.1
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.22,
+          0.22,
+          0.22
+        ]
+      },
+      "mesh": {
+        "geometry": "sphere",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.12,
+          0.76,
+          0.89
+        ],
+        "metallic": 0.1,
+        "roughness": 0.25,
+        "emission": 2.4
+      },
+      "id": 98
+    },
+    {
+      "name": "Checkpoint / crystal -2.3",
+      "transform": {
+        "position": [
+          -2.3,
+          0.7,
+          -4.9
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.35,
+          1.1,
+          0.35
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/crystal.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.23,
+          0.87,
+          0.96
+        ],
+        "metallic": 0.12,
+        "roughness": 0.2,
+        "emission": 0.55
+      },
+      "id": 99
+    },
+    {
+      "name": "Checkpoint / crystal 2.3",
+      "transform": {
+        "position": [
+          2.3,
+          0.7,
+          -4.9
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.35,
+          1.1,
+          0.35
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/crystal.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.23,
+          0.87,
+          0.96
+        ],
+        "metallic": 0.12,
+        "roughness": 0.2,
+        "emission": 0.55
+      },
+      "id": 100
+    },
+    {
+      "name": "Lift / crystal -6.85",
+      "transform": {
+        "position": [
+          -6.85,
+          0.7,
+          8.9
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.35,
+          1.1,
+          0.35
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/crystal.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.23,
+          0.87,
+          0.96
+        ],
+        "metallic": 0.12,
+        "roughness": 0.2,
+        "emission": 0.55
+      },
+      "id": 101
+    },
+    {
+      "name": "Lift / crystal -5.15",
+      "transform": {
+        "position": [
+          -5.15,
+          0.7,
+          8.9
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.35,
+          1.1,
+          0.35
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/crystal.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.23,
+          0.87,
+          0.96
+        ],
+        "metallic": 0.12,
+        "roughness": 0.2,
+        "emission": 0.55
+      },
+      "id": 102
+    },
+    {
+      "name": "Lift upper balcony",
+      "transform": {
+        "position": [
+          -9.1,
+          2.7,
+          8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          3,
+          1,
+          4
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "body": {
+        "shape": "box",
+        "mass": 0,
+        "velocity": [
+          0,
+          0,
+          0
+        ],
+        "restitution": 0.1,
+        "friction": 0.55
+      },
+      "id": 103
+    },
+    {
+      "name": "Lift balcony / island",
+      "transform": {
+        "position": [
+          -9.1,
+          0.4,
+          8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          4,
+          3.2,
+          4.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/island.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.45,
+          0.56,
+          0.5
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 104
+    },
+    {
+      "name": "Balcony sweeper",
+      "transform": {
+        "position": [
+          -9.1,
+          3.6,
+          8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.4,
+          0.22,
+          0.18
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.82,
+          0.59,
+          0.27
+        ],
+        "metallic": 0.6,
+        "roughness": 0.3,
+        "emission": 0
+      },
+      "body": {
+        "shape": "box",
+        "mass": 0,
+        "velocity": [
+          0,
+          0,
+          0
+        ],
+        "restitution": 0.1,
+        "friction": 0.55,
+        "kinematic": true
+      },
+      "id": 105
+    },
+    {
+      "name": "Distant island 0",
+      "transform": {
+        "position": [
+          -14,
+          -7,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          10,
+          8.0,
+          10
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/island.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.45,
+          0.61,
+          0.6
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 106
+    },
+    {
+      "name": "Garden pillar 0 0",
+      "transform": {
+        "position": [
+          -12.2,
+          -3.0,
+          -5.0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 107
+    },
+    {
+      "name": "Garden canopy 0 0",
+      "transform": {
+        "position": [
+          -12.2,
+          -1.2000000000000002,
+          -5.0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 108
+    },
+    {
+      "name": "Garden pillar 0 1",
+      "transform": {
+        "position": [
+          -14.9,
+          -3.0,
+          -3.44115427318801
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 109
+    },
+    {
+      "name": "Garden canopy 0 1",
+      "transform": {
+        "position": [
+          -14.9,
+          -1.2000000000000002,
+          -3.44115427318801
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 110
+    },
+    {
+      "name": "Garden pillar 0 2",
+      "transform": {
+        "position": [
+          -14.9,
+          -3.0,
+          -6.558845726811989
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 111
+    },
+    {
+      "name": "Garden canopy 0 2",
+      "transform": {
+        "position": [
+          -14.9,
+          -1.2000000000000002,
+          -6.558845726811989
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 112
+    },
+    {
+      "name": "Distant island 1",
+      "transform": {
+        "position": [
+          17,
+          -9,
+          3
+        ],
+        "rotation": [
+          0,
+          43,
+          0
+        ],
+        "scale": [
+          12,
+          9.600000000000001,
+          12
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/island.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.45,
+          0.61,
+          0.6
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 113
+    },
+    {
+      "name": "Garden pillar 1 0",
+      "transform": {
+        "position": [
+          19.16,
+          -4.4399999999999995,
+          3.0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 114
+    },
+    {
+      "name": "Garden canopy 1 0",
+      "transform": {
+        "position": [
+          19.16,
+          -2.6399999999999997,
+          3.0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 115
+    },
+    {
+      "name": "Garden pillar 1 1",
+      "transform": {
+        "position": [
+          15.92,
+          -4.4399999999999995,
+          4.870614872174388
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 116
+    },
+    {
+      "name": "Garden canopy 1 1",
+      "transform": {
+        "position": [
+          15.92,
+          -2.6399999999999997,
+          4.870614872174388
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 117
+    },
+    {
+      "name": "Garden pillar 1 2",
+      "transform": {
+        "position": [
+          15.919999999999998,
+          -4.4399999999999995,
+          1.1293851278256133
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 118
+    },
+    {
+      "name": "Garden canopy 1 2",
+      "transform": {
+        "position": [
+          15.919999999999998,
+          -2.6399999999999997,
+          1.1293851278256133
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 119
+    },
+    {
+      "name": "Distant island 2",
+      "transform": {
+        "position": [
+          -12,
+          -13,
+          -23
+        ],
+        "rotation": [
+          0,
+          86,
+          0
+        ],
+        "scale": [
+          16,
+          12.8,
+          16
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/island.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.45,
+          0.61,
+          0.6
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 120
+    },
+    {
+      "name": "Garden pillar 2 0",
+      "transform": {
+        "position": [
+          -9.120000000000001,
+          -7.319999999999999,
+          -23.0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 121
+    },
+    {
+      "name": "Garden canopy 2 0",
+      "transform": {
+        "position": [
+          -9.120000000000001,
+          -5.52,
+          -23.0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 122
+    },
+    {
+      "name": "Garden pillar 2 1",
+      "transform": {
+        "position": [
+          -13.44,
+          -7.319999999999999,
+          -20.505846837100815
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 123
+    },
+    {
+      "name": "Garden canopy 2 1",
+      "transform": {
+        "position": [
+          -13.44,
+          -5.52,
+          -20.505846837100815
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 124
+    },
+    {
+      "name": "Garden pillar 2 2",
+      "transform": {
+        "position": [
+          -13.440000000000001,
+          -7.319999999999999,
+          -25.49415316289918
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 125
+    },
+    {
+      "name": "Garden canopy 2 2",
+      "transform": {
+        "position": [
+          -13.440000000000001,
+          -5.52,
+          -25.49415316289918
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 126
+    },
+    {
+      "name": "Distant island 3",
+      "transform": {
+        "position": [
+          18,
+          -14,
+          -25
+        ],
+        "rotation": [
+          0,
+          129,
+          0
+        ],
+        "scale": [
+          17,
+          13.600000000000001,
+          17
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/island.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.45,
+          0.61,
+          0.6
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 127
+    },
+    {
+      "name": "Garden pillar 3 0",
+      "transform": {
+        "position": [
+          21.06,
+          -8.040000000000001,
+          -25.0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 128
+    },
+    {
+      "name": "Garden canopy 3 0",
+      "transform": {
+        "position": [
+          21.06,
+          -6.24,
+          -25.0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 129
+    },
+    {
+      "name": "Garden pillar 3 1",
+      "transform": {
+        "position": [
+          16.47,
+          -8.040000000000001,
+          -22.349962264419617
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 130
+    },
+    {
+      "name": "Garden canopy 3 1",
+      "transform": {
+        "position": [
+          16.47,
+          -6.24,
+          -22.349962264419617
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 131
+    },
+    {
+      "name": "Garden pillar 3 2",
+      "transform": {
+        "position": [
+          16.47,
+          -8.040000000000001,
+          -27.65003773558038
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 132
+    },
+    {
+      "name": "Garden canopy 3 2",
+      "transform": {
+        "position": [
+          16.47,
+          -6.24,
+          -27.65003773558038
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 133
+    },
+    {
+      "name": "Distant island 4",
+      "transform": {
+        "position": [
+          3,
+          -19,
+          -40
+        ],
+        "rotation": [
+          0,
+          172,
+          0
+        ],
+        "scale": [
+          23,
+          18.400000000000002,
+          23
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/island.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.45,
+          0.61,
+          0.6
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 134
+    },
+    {
+      "name": "Garden pillar 4 0",
+      "transform": {
+        "position": [
+          7.14,
+          -11.36,
+          -40.0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 135
+    },
+    {
+      "name": "Garden canopy 4 0",
+      "transform": {
+        "position": [
+          7.14,
+          -9.559999999999999,
+          -40.0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 136
+    },
+    {
+      "name": "Garden pillar 4 1",
+      "transform": {
+        "position": [
+          0.9300000000000006,
+          -11.36,
+          -36.414654828332424
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 137
+    },
+    {
+      "name": "Garden canopy 4 1",
+      "transform": {
+        "position": [
+          0.9300000000000006,
+          -9.559999999999999,
+          -36.414654828332424
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 138
+    },
+    {
+      "name": "Garden pillar 4 2",
+      "transform": {
+        "position": [
+          0.9299999999999979,
+          -11.36,
+          -43.585345171667576
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 139
+    },
+    {
+      "name": "Garden canopy 4 2",
+      "transform": {
+        "position": [
+          0.9299999999999979,
+          -9.559999999999999,
+          -43.585345171667576
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 140
+    },
+    {
+      "name": "Distant island 5",
+      "transform": {
+        "position": [
+          -31,
+          -19,
+          -34
+        ],
+        "rotation": [
+          0,
+          215,
+          0
+        ],
+        "scale": [
+          26,
+          20.8,
+          26
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/island.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.45,
+          0.61,
+          0.6
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 141
+    },
+    {
+      "name": "Garden pillar 5 0",
+      "transform": {
+        "position": [
+          -26.32,
+          -10.520000000000001,
+          -34.0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 142
+    },
+    {
+      "name": "Garden canopy 5 0",
+      "transform": {
+        "position": [
+          -26.32,
+          -8.72,
+          -34.0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 143
+    },
+    {
+      "name": "Garden pillar 5 1",
+      "transform": {
+        "position": [
+          -33.339999999999996,
+          -10.520000000000001,
+          -29.947001110288827
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 144
+    },
+    {
+      "name": "Garden canopy 5 1",
+      "transform": {
+        "position": [
+          -33.339999999999996,
+          -8.72,
+          -29.947001110288827
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 145
+    },
+    {
+      "name": "Garden pillar 5 2",
+      "transform": {
+        "position": [
+          -33.34,
+          -10.520000000000001,
+          -38.05299888971117
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 146
+    },
+    {
+      "name": "Garden canopy 5 2",
+      "transform": {
+        "position": [
+          -33.34,
+          -8.72,
+          -38.05299888971117
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 147
+    },
+    {
+      "name": "Distant island 6",
+      "transform": {
+        "position": [
+          37,
+          -23,
+          -44
+        ],
+        "rotation": [
+          0,
+          258,
+          0
+        ],
+        "scale": [
+          30,
+          24.0,
+          30
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/island.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.45,
+          0.61,
+          0.6
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 148
+    },
+    {
+      "name": "Garden pillar 6 0",
+      "transform": {
+        "position": [
+          42.4,
+          -13.400000000000002,
+          -44.0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 149
+    },
+    {
+      "name": "Garden canopy 6 0",
+      "transform": {
+        "position": [
+          42.4,
+          -11.600000000000001,
+          -44.0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 150
+    },
+    {
+      "name": "Garden pillar 6 1",
+      "transform": {
+        "position": [
+          34.300000000000004,
+          -13.400000000000002,
+          -39.32346281956403
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 151
+    },
+    {
+      "name": "Garden canopy 6 1",
+      "transform": {
+        "position": [
+          34.300000000000004,
+          -11.600000000000001,
+          -39.32346281956403
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 152
+    },
+    {
+      "name": "Garden pillar 6 2",
+      "transform": {
+        "position": [
+          34.3,
+          -13.400000000000002,
+          -48.676537180435965
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          3,
+          0.7
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/pillar.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.96,
+          0.94,
+          0.88
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 153
+    },
+    {
+      "name": "Garden canopy 6 2",
+      "transform": {
+        "position": [
+          34.3,
+          -11.600000000000001,
+          -48.676537180435965
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2.5,
+          2.7,
+          2.5
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.2,
+          0.44,
+          0.36
+        ],
+        "metallic": 0,
+        "roughness": 0.9,
+        "emission": 0
+      },
+      "id": 154
+    },
+    {
+      "name": "Planter 0",
+      "transform": {
+        "position": [
+          -2.8,
+          0.16,
+          9.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.8,
+          0.35,
+          0.8
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.7,
+          0.8,
+          0.75
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 155
+    },
+    {
+      "name": "Garden shrub 0",
+      "transform": {
+        "position": [
+          -2.8,
+          0.6,
+          9.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          0.9,
+          1
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.22,
+          0.47,
+          0.34
+        ],
+        "metallic": 0,
+        "roughness": 0.92,
+        "emission": 0
+      },
+      "id": 156
+    },
+    {
+      "name": "Planter 1",
+      "transform": {
+        "position": [
+          2.8,
+          0.16,
+          9.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.8,
+          0.35,
+          0.8
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.7,
+          0.8,
+          0.75
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 157
+    },
+    {
+      "name": "Garden shrub 1",
+      "transform": {
+        "position": [
+          2.8,
+          0.6,
+          9.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          0.9,
+          1
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.22,
+          0.47,
+          0.34
+        ],
+        "metallic": 0,
+        "roughness": 0.92,
+        "emission": 0
+      },
+      "id": 158
+    },
+    {
+      "name": "Planter 2",
+      "transform": {
+        "position": [
+          -2.35,
+          0.16,
+          -6.1
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.8,
+          0.35,
+          0.8
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.7,
+          0.8,
+          0.75
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 159
+    },
+    {
+      "name": "Garden shrub 2",
+      "transform": {
+        "position": [
+          -2.35,
+          0.6,
+          -6.1
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          0.9,
+          1
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.22,
+          0.47,
+          0.34
+        ],
+        "metallic": 0,
+        "roughness": 0.92,
+        "emission": 0
+      },
+      "id": 160
+    },
+    {
+      "name": "Planter 3",
+      "transform": {
+        "position": [
+          10.1,
+          0.16,
+          -3.3
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.8,
+          0.35,
+          0.8
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/slab.obj",
+        "texture": "assets/textures/temple-stone.png"
+      },
+      "material": {
+        "albedo": [
+          0.7,
+          0.8,
+          0.75
+        ],
+        "metallic": 0,
+        "roughness": 0.55,
+        "emission": 0
+      },
+      "id": 161
+    },
+    {
+      "name": "Garden shrub 3",
+      "transform": {
+        "position": [
+          10.1,
+          0.6,
+          -3.3
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          0.9,
+          1
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/canopy.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.22,
+          0.47,
+          0.34
+        ],
+        "metallic": 0,
+        "roughness": 0.92,
+        "emission": 0
+      },
+      "id": 162
+    },
+    {
+      "name": "Course light 0",
+      "transform": {
+        "position": [
+          0,
+          4,
+          8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "light": {
+        "color": [
+          0.38,
+          0.74,
+          1
+        ],
+        "intensity": 35
+      },
+      "id": 163
+    },
+    {
+      "name": "Course light 1",
+      "transform": {
+        "position": [
+          0,
+          4,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "light": {
+        "color": [
+          0.35,
+          1,
+          0.73
+        ],
+        "intensity": 35
+      },
+      "id": 164
+    },
+    {
+      "name": "Course light 2",
+      "transform": {
+        "position": [
+          9,
+          4,
           -5
         ],
         "rotation": [
@@ -510,40 +5966,52 @@
       "light": {
         "color": [
           1,
-          0.8,
-          0.3
+          0.73,
+          0.36
         ],
-        "intensity": 70
+        "intensity": 35
       },
-      "id": 12
+      "id": 165
     }
   ],
   "camera": {
     "eye": [
-      10,
-      16,
-      22
+      11,
+      13,
+      21
     ],
     "target": [
       0,
       0,
-      6
+      3
     ],
     "fov": 45
   },
   "environment": {
     "sunDirection": [
-      -0.5,
+      -0.55,
       -1,
-      -0.4
+      -0.32
     ],
     "sunColor": [
       1,
-      0.92,
-      0.82
+      0.88,
+      0.69
     ],
-    "sunPower": 3,
-    "ambient": 0.14,
-    "exposure": 1
+    "sunPower": 3.3,
+    "ambient": 0.24,
+    "exposure": 1,
+    "skyTop": [
+      0.27,
+      0.55,
+      0.72
+    ],
+    "skyBottom": [
+      0.8,
+      0.88,
+      0.84
+    ],
+    "fogDensity": 0.009,
+    "sunShadows": true
   }
 }

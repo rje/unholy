@@ -12,7 +12,7 @@ executable hj
   hs-source-dirs: src
   other-modules: HJ.Types, HJ.JSON, HJ.Project, HJ.Native, HJ.Script, HJ.Physics, HJ.Editor
   build-depends: base >=4.18 && <5, containers, directory, filepath, process, time, aeson, bytestring, text
-  c-sources: native/hj.c
+  c-sources: native/hj.c, native/audio.c
   cxx-sources: native/physics.cpp
   cxx-options: -std=c++17
   if os(darwin)
@@ -32,7 +32,7 @@ test-suite hj-tests
   hs-source-dirs: test, src
   other-modules: HJ.Types, HJ.JSON, HJ.Project, HJ.Native, HJ.Script, HJ.Physics
   build-depends: base >=4.18 && <5, containers, directory, filepath, process, time, aeson, bytestring, text
-  c-sources: native/hj.c
+  c-sources: native/hj.c, native/audio.c
   cxx-sources: native/physics.cpp
   cxx-options: -std=c++17
   if os(darwin)

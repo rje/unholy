@@ -11,7 +11,7 @@ import Control.Monad (forM_, foldM)
 type Physics = Ptr ()
 foreign import ccall unsafe "hj_physics_new" newPhysics :: IO Physics
 foreign import ccall unsafe "hj_physics_close" closePhysics :: Physics -> IO ()
-foreign import ccall unsafe "hj_physics_add" cAdd :: Physics -> CInt -> CInt -> CFloat -> CFloat -> CFloat -> Ptr CFloat -> IO ()
+foreign import ccall unsafe "hj_physics_add" cAdd :: Physics -> CInt -> CInt -> CInt -> CFloat -> CFloat -> CFloat -> Ptr CFloat -> IO ()
 foreign import ccall unsafe "hj_physics_sync" cSync :: Physics -> CInt -> Ptr CFloat -> IO ()
 foreign import ccall unsafe "hj_physics_step" cStep :: Physics -> CFloat -> IO ()
 foreign import ccall unsafe "hj_physics_read" cRead :: Physics -> CInt -> Ptr CFloat -> IO ()
@@ -23,7 +23,7 @@ createPhysics w = do
   p<-newPhysics
   forM_ (IM.toAscList (bodies w)) $ \(e,b) -> case IM.lookup e (transforms w) of
     Nothing -> pure ()
-    Just t -> withFloats (bodyData t b) $ cAdd p (fromIntegral e) (if bodyShape b==Sphere then 1 else 0) (realToFrac (mass b)) (realToFrac (restitution b)) (realToFrac (friction b))
+    Just t -> withFloats (bodyData t b) $ cAdd p (fromIntegral e) (if bodyShape b==Sphere then 1 else 0) (if kinematic b then 1 else 0) (realToFrac (mass b)) (realToFrac (restitution b)) (realToFrac (friction b))
   pure p
 
 stepPhysics :: Physics -> Float -> World -> IO World

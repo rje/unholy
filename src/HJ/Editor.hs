@@ -140,6 +140,7 @@ drawChrome w h s = do
       pure (withLogs msg afterPlay {live=Just (r',p'),hud=status})
     else pure afterPlay
   let state=afterStep {paused=if pause then not (paused afterStep) else paused afterStep}
+  when pause (N.pauseAudio (paused state))
   N.rect 0 70 222 (h-96) 1
   N.text 16 88 13 "SCENE / ENTITIES" 1
   add<-N.button 146 80 62 29 "+ Add" 0
@@ -180,7 +181,7 @@ drawHierarchy h s = do
 drawInspector :: Float -> Float -> Editor -> IO Editor
 drawInspector w h s = do
   wheel<-N.wheel (w-322) 118 322 (h-146)
-  let maxScroll=if tab s==WorldTab then 160 else 800
+  let maxScroll=if tab s==WorldTab then 420 else 850
       scroll=max 0 (min maxScroll (inspectorScroll s-wheel*40))
       x=w-305; y=132-scroll
   N.clip (w-322) 120 322 (h-149)
@@ -268,16 +269,18 @@ entityInspector x y s = case selected s of
         massText<-N.textbox 24 (x+163) (y+887) 124 30 (show (mass body))
         friction'<-N.slider x (y+931) 287 "Friction" (friction body) 0 2
         bounce<-N.slider x (y+979) 287 "Restitution" (restitution body) 0 1
-        pure $ if remove then w2 {bodies=IM.delete e (bodies w2)} else w2 {bodies=IM.insert e (body {bodyShape=if shape then if bodyShape body==Box then Sphere else Box else bodyShape body,mass=max 0 (maybe (mass body) id (readFloat massText)),friction=friction',restitution=bounce}) (bodies w2)}
-    N.text x (y+1044) 13 "POINT LIGHT" 2
+        motion<-N.button x (y+1013) 287 28 (if kinematic body then "Motion: kinematic / scripted" else "Motion: static or dynamic") 0
+        let kin=if motion then not (kinematic body) else kinematic body
+        pure $ if remove then w2 {bodies=IM.delete e (bodies w2)} else w2 {bodies=IM.insert e (body {bodyShape=if shape then if bodyShape body==Box then Sphere else Box else bodyShape body,mass=if kin then 0 else max 0 (maybe (mass body) id (readFloat massText)),friction=friction',restitution=bounce,kinematic=kin}) (bodies w2)}
+    N.text x (y+1084) 13 "POINT LIGHT" 2
     w4<-case IM.lookup e (lights w3) of
       Nothing->do
-        addLight<-N.button x (y+1070) 287 30 "Add point light" 0
+        addLight<-N.button x (y+1110) 287 30 "Add point light" 0
         pure (if addLight && IM.size (lights w3)<8 then w3 {lights=IM.insert e (Light (V3 1 0.8 0.6) 30) (lights w3)} else w3)
       Just l->do
-        color<-vectorFields 140 x (y+1070) "LIGHT COLOR" (lightColor l)
-        power<-N.slider x (y+1133) 287 "Intensity" (intensity l) 0 200
-        remove<-N.button x (y+1181) 287 28 "Remove light" 2
+        color<-vectorFields 140 x (y+1110) "LIGHT COLOR" (lightColor l)
+        power<-N.slider x (y+1173) 287 "Intensity" (intensity l) 0 200
+        remove<-N.button x (y+1221) 287 28 "Remove light" 2
         pure w3 {lights=if remove then IM.delete e (lights w3) else IM.insert e (Light color power) (lights w3)}
     let edited=change ((document s) {world=w4}) s
     if del then pure (editWorld (destroy e) edited) else if dupe then do
@@ -303,8 +306,12 @@ worldInspector x y s = do
   useView<-N.button x (y+624) 287 32 "Use current editor camera" 0
   gridToggle<-N.button x (y+668) 287 30 (if grid s then "Grid: visible" else "Grid: hidden") 0
   N.text x (y+718) 12 "Physics: Bullet / 120 Hz / gravity -18" 1
+  sky1<-vectorFields 240 x (y+766) "SKY / TOP COLOR" (skyTop env)
+  sky2<-vectorFields 250 x (y+831) "SKY / HORIZON COLOR" (skyBottom env)
+  fog<-N.slider x (y+898) 287 "Atmospheric fog" (fogDensity env) 0 0.05
+  shadows<-N.button x (y+949) 287 30 (if sunShadows env then "Sun shadows: enabled" else "Sun shadows: disabled") 0
   let camera'=if pos==tgt then cam else Camera pos tgt fov'
-      env'=Environment (if sun==V3 0 0 0 then sunDirection env else sun) color power amb exp'
+      env'=env {sunDirection=if sun==V3 0 0 0 then sunDirection env else sun,sunColor=color,sunPower=power,ambient=amb,exposure=exp',skyTop=sky1,skyBottom=sky2,fogDensity=fog,sunShadows=if shadows then not (sunShadows env) else sunShadows env}
   finalCamera<-if useView then N.getCamera else pure camera'
   pure (change (p {projectName=name,environment=env',camera=finalCamera}) s {grid=if gridToggle then not (grid s) else grid s})
   where p=document s;env=environment p;cam=camera p

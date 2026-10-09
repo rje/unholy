@@ -22,7 +22,7 @@ static btTransform transform(const float *d) {
 extern "C" {
 void *hj_physics_new() {return new Physics();}
 void hj_physics_close(void *p) {delete static_cast<Physics*>(p);}
-void hj_physics_add(void *p,int id,int sphere,float mass,float bounce,float friction,const float *d) {
+void hj_physics_add(void *p,int id,int sphere,int kinematic,float mass,float bounce,float friction,const float *d) {
     auto *physics=static_cast<Physics*>(p);
     btCollisionShape *shape;
     if(sphere) {shape=new btSphereShape(0.5f);float s=std::max({d[6],d[7],d[8]});shape->setLocalScaling(btVector3(s,s,s));}
@@ -32,6 +32,10 @@ void hj_physics_add(void *p,int id,int sphere,float mass,float bounce,float fric
     btRigidBody::btRigidBodyConstructionInfo info(mass,motion,shape,inertia);info.m_friction=friction;info.m_restitution=bounce;
     auto body=new btRigidBody(info);body->setUserIndex(id);body->setLinearVelocity(btVector3(d[9],d[10],d[11]));
     body->setDamping(0.04f,0.08f);
+    if(kinematic) {
+        body->setCollisionFlags((body->getCollisionFlags() & ~btCollisionObject::CF_STATIC_OBJECT)|btCollisionObject::CF_KINEMATIC_OBJECT);
+        body->setActivationState(DISABLE_DEACTIVATION);
+    }
     if(mass>0) {body->setCcdMotionThreshold(0.25f);body->setCcdSweptSphereRadius(0.2f*std::min({d[6],d[7],d[8]}));}
     physics->bodies[id]=body;physics->world.addRigidBody(body);
 }
@@ -45,6 +49,8 @@ void hj_physics_sync(void *p,int id,const float *d) {
         if(body->getInvMass()>0){float mass=1/body->getInvMass();btVector3 inertia;shape->calculateLocalInertia(mass,inertia);body->setMassProps(mass,inertia);body->updateInertiaTensor();}
         physics->world.updateSingleAabb(body);body->activate(true);
     }
+    // Bullet derives contact velocity from the previous pose and new motion state.
+    if(body->isKinematicObject()) {body->getMotionState()->setWorldTransform(next);return;}
     if((next.getOrigin()-old.getOrigin()).length2()>0.0000001f || next.getRotation().angleShortestPath(old.getRotation())>0.0001f) {
         body->setWorldTransform(next);body->getMotionState()->setWorldTransform(next);body->setAngularVelocity(btVector3(0,0,0));body->clearForces();physics->world.updateSingleAabb(body);body->activate(true);
     }

@@ -12,7 +12,8 @@ import Control.Monad (foldM, forM_, when)
 
 type VM = Ptr ()
 data Runtime = Runtime { virtualMachines :: IM.IntMap VM, physics :: Physics }
-foreign import ccall unsafe "hj_lua_load" cLoad :: CString -> IO VM
+foreign import ccall unsafe "hj_lua_load" cLoad :: CString -> CString -> IO VM
+foreign import ccall unsafe "hj_audio_stop" cStopAudio :: IO ()
 foreign import ccall unsafe "hj_lua_close" cClose :: VM -> IO ()
 foreign import ccall unsafe "hj_lua_valid" cValid :: VM -> IO CInt
 foreign import ccall unsafe "hj_lua_message" cMessage :: VM -> IO CString
@@ -31,7 +32,7 @@ startRuntime root p = do
   pure (Runtime vms phy,project,logs)
   where
     load (vms,current,logs) (e,path) = do
-      vm<-withCString (root </> path) cLoad
+      vm<-withCString (root </> path) $ \file -> withCString root (cLoad file)
       if vm==nullPtr then pure (vms,current,logs++["Could not allocate Lua VM"]) else do
         valid<-cValid vm
         message<-cMessage vm >>= peekCString
@@ -42,7 +43,7 @@ startRuntime root p = do
                 else cClose vm >> pure (vms,current,logs++msg)
 
 stopRuntime :: Runtime -> IO ()
-stopRuntime r = do mapM_ cClose (IM.elems (virtualMachines r));closePhysics (physics r)
+stopRuntime r = do mapM_ cClose (IM.elems (virtualMachines r));closePhysics (physics r);cStopAudio
 
 stepRuntime :: Float -> [Float] -> Runtime -> Project -> IO (Runtime,Project,[String],String)
 stepRuntime dt input r p = do

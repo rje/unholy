@@ -34,12 +34,14 @@ build configuration, but Linux has not been qualified.
 - **Inspector**: edit position, Euler rotation, scale, mesh and albedo texture
   paths, material color/metallic/roughness/emission, Lua scripts, Bullet box or
   sphere bodies, mass/friction/restitution, and point lights. Scroll for the
-  lower components. Numeric fields support ordinary keyboard editing.
+  lower components. Numeric fields support ordinary keyboard editing. Set a
+  body to **kinematic** for Lua-driven moving platforms and obstacles.
 - **Assets**: place `.lua`, `.obj`, `.gltf`, `.glb` or textures in a project's
   `assets/` directory. **Refresh assets** rescans it and reloads GPU assets.
   Click an asset to attach it to the selected entity. Mesh paths are project
   relative; built-ins are `cube`, `sphere`, `plane`, `cylinder` and `torus`.
-- **World / Camera**: edit the sun, ambient intensity, exposure and game camera;
+- **World / Camera**: edit the sun, ambient intensity, exposure, sky colors,
+  atmospheric fog, sun shadows and game camera;
   copy the editor camera to the project and toggle the grid.
 - **Play / Pause / Step**: Lua and Bullet run on a separate copy of the saved
   scene. Stop restores the editable scene. Step advances one 1/120 second tick.
@@ -59,11 +61,15 @@ during play. Restart play after modifying a Lua source file to reload it.
 | Project | What to do | Systems shown |
 | --- | --- | --- |
 | Material Lab | Inspect the two rows of spheres and animated ring | GGX metal/roughness, point lights, emissive materials, Lua animation |
-| Marble Run | Roll along the blue path, jump the gap, reach the green checkpoint, turn right to the gold finish | Bullet sphere contacts, jump/grounding, Lua movement and checkpoint/respawn, live camera, timer, win/restart |
+| Marble Run / Aether Gardens | Follow the blue lights, jump the gap, reach the checkpoint, cross the sliding bridge to the gold arch; ride the left lift to the bonus balcony | Textured beveled decks and suspended gardens, sun shadows/fog, kinematic platforms and rotating sweeper, jump/checkpoint/respawn, sound effects and ambience, win/restart |
 | Knockdown | Ram all eight orange towers with the steel ball | Dynamic box/sphere collisions, rolling and toppling, Lua scoring, material changes, win/restart |
 
 Both games use **WASD/arrows**, **Space** to jump/hop, and **R** to restart.
 The marble game's platform edges and its gap are intentional hazards.
+**M** toggles sound. Marble Run includes wind, quiet ambient bells, rolling,
+jump/landing effects and checkpoint/finish chimes. Pause suspends sound; Stop
+ends it. The source art and generation notes are in
+[projects/marble-run/ART.md](projects/marble-run/ART.md).
 
 ## Lua
 
@@ -86,6 +92,8 @@ return {
         local other = scene:get("Another entity") -- or a numeric entity ID
         if other then other.material.roughness = 0.3 end
         scene.hud = "A message\nA second line"
+        -- One-shot sound, project-relative path, volume and playback pitch:
+        -- scene:sound("assets/audio/jump.wav", 0.4, 1.0)
     end
 }
 ```
@@ -99,6 +107,10 @@ transforms, materials and velocities of existing entities. `scene.by_id` and
 appears in the editor console. Lua failures disable that script and report the
 error; each callback has a 200,000-instruction limit to catch accidental loops.
 Scripts are trusted local code with the standard Lua libraries available.
+`scene:sound(path, volume, pitch)` plays a cached sound once. Call
+`scene:loop(path, volume, pitch)` during updates to sustain an ambience or
+rolling loop; volume zero silences it. Playback uses raylib's audio mixer.
+Headless simulation validates referenced files without opening an audio device.
 
 ## Architecture and limits
 
@@ -108,7 +120,8 @@ are **Name, Transform, Mesh, Material, Script, Light and Body**. Systems join th
 tables they need. Small scalar FFI adapters call established native libraries:
 
 - [raylib](https://github.com/raysan5/raylib): window/input, static mesh loading,
-  GPU resources and OpenGL 3.3 drawing.
+  GPU resources, audio decoding/mixing/playback and OpenGL 3.3 drawing. The
+  depth-only shadow target follows its shadowmap rendering example.
 - [raygui](https://github.com/raysan5/raygui): editor widgets, with a charcoal and
   blue theme. A pinned header and its license live in `native/vendor/`.
 - [Lua](https://www.lua.org/manual/5.5/): embedded per-entity script instances.
@@ -118,9 +131,10 @@ tables they need. Small scalar FFI adapters call established native libraries:
 
 PBR uses a Cook-Torrance GGX BRDF, Schlick Fresnel, Smith geometry, an
 energy-conserving diffuse term, directional sun plus up to eight point lights,
-ACES tone mapping and gamma conversion. Ambient light is a simple approximation.
-This first version has **no shadows, environment-map IBL, normal maps, packed
-metal/roughness textures, skeletal animation, audio, parenting, terrain or
+ACES tone mapping and gamma conversion, an optional 2048-pixel directional
+shadow map with 3x3 filtering, and distance fog. Ambient light is a simple approximation.
+This version has **no environment-map IBL, normal maps, packed
+metal/roughness textures, skeletal animation, parenting, terrain or
 runtime entity spawning**. Imported meshes are static; physics colliders are
 explicit box/sphere approximations, independent of mesh geometry. Nonuniform
 sphere scale uses the largest axis. The editor has component fields and camera
@@ -143,7 +157,9 @@ Linux export requires the native libraries installed on the destination machine.
 `make test` checks ECS lifecycle, sample persistence, a falling sphere's Bullet
 contacts, Lua/component/camera synchronization and errors, the marble course
 through finish and restart using its real Lua + Bullet loop, and a physical
-knockdown collision. The headless tests complement native visual/UI checks.
+knockdown collision. It also checks that the marble rides the actual level's
+kinematic lift and that the moving bridge and its decorations animate. The
+headless tests complement native visual/UI and audio-mixer checks.
 `scripts/generate-samples.py` regenerates the checked-in scene data.
 `--replay` uses raylib's native automation-event format. The checked-in editor
 smoke replay drives toolbar clicks, pause/step/stop, project selection, keyboard

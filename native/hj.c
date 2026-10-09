@@ -1,5 +1,6 @@
 #include "raylib.h"
 #include "raymath.h"
+#include "rlgl.h"
 static int mouse_pressed(void);
 static int key_pressed(int key);
 #define GUI_BUTTON_PRESSED mouse_pressed()
@@ -18,7 +19,10 @@ static int mouse_released(void);
 #define MAX_MATERIAL_MAPS 12
 
 // Flat, scalar FFI boundary. Ownership and application decisions live in Haskell.
-static Shader pbr;
+static Shader pbr, depthShader;
+static RenderTexture2D shadowMap;
+static Matrix lightVP;
+static int shadowPass;
 static RenderTexture2D viewport;
 static Camera3D activeCamera;
 static Font font;
@@ -50,6 +54,11 @@ typedef struct { char path[2048]; Texture2D texture; } TextureEntry;
 static ModelEntry models[256];
 static TextureEntry textures[256];
 static int modelCount, textureCount;
+void hj_audio_init(void);
+void hj_audio_close(void);
+void hj_audio_stop(void);
+void hj_audio_toggle_mute(void);
+int hj_audio_play(const char *path,float volume,float pitch,int loop);
 
 static void uniform(const char *name, const void *value, int type) {
     SetShaderValue(pbr,GetShaderLocation(pbr,name),value,type);
@@ -63,6 +72,7 @@ int hj_init(const char *title,const char *assetRoot) {
     InitWindow(1440,900,title);
     if (!IsWindowReady()) return 0;
     hj_platform_init(GetWindowHandle());
+    hj_audio_init();
     SetWindowMinSize(1100,760);
     SetExitKey(KEY_NULL);
     SetTargetFPS(60);
@@ -104,6 +114,19 @@ int hj_init(const char *title,const char *assetRoot) {
     pbr.locs[SHADER_LOC_MATRIX_MODEL]=GetShaderLocation(pbr,"matModel");
     pbr.locs[SHADER_LOC_MATRIX_NORMAL]=GetShaderLocation(pbr,"matNormal");
     pbr.locs[SHADER_LOC_VECTOR_VIEW]=GetShaderLocation(pbr,"viewPos");
+    pbr.locs[SHADER_LOC_MAP_HEIGHT]=GetShaderLocation(pbr,"shadowMap");
+    snprintf(vs,sizeof(vs),"%s/shaders/depth.vs",assetRoot);
+    snprintf(fs,sizeof(fs),"%s/shaders/depth.fs",assetRoot);
+    depthShader=LoadShader(vs,fs);
+    if(!IsShaderValid(depthShader)) {snprintf(nativeError,sizeof(nativeError),"Cannot load shadow shader");return 0;}
+    // Depth-only target, following raylib's shadowmap rendering example.
+    shadowMap.id=rlLoadFramebuffer();shadowMap.texture.width=shadowMap.texture.height=2048;
+    rlEnableFramebuffer(shadowMap.id);
+    shadowMap.depth=(Texture2D){.id=rlLoadTextureDepth(2048,2048,false),.width=2048,.height=2048,.mipmaps=1,.format=19};
+    rlFramebufferAttach(shadowMap.id,shadowMap.depth.id,RL_ATTACHMENT_DEPTH,RL_ATTACHMENT_TEXTURE2D,0);
+    if(!rlFramebufferComplete(shadowMap.id)) {snprintf(nativeError,sizeof(nativeError),"Cannot create shadow framebuffer");return 0;}
+    rlDisableFramebuffer();
+    SetTextureWrap(shadowMap.depth,TEXTURE_WRAP_CLAMP);
     return 1;
 }
 void hj_unload_assets(void) {
@@ -113,10 +136,13 @@ void hj_unload_assets(void) {
 }
 void hj_close(void) {
     hj_platform_close();
+    hj_audio_close();
     if(replay.events) UnloadAutomationEventList(replay);
     hj_unload_assets();
     if (viewport.id) UnloadRenderTexture(viewport);
     UnloadShader(pbr);
+    UnloadShader(depthShader);
+    if(shadowMap.id) rlUnloadFramebuffer(shadowMap.id);
     if(ownFont) UnloadFont(font);
     CloseWindow();
 }
@@ -129,6 +155,7 @@ float hj_dt(void) {
     memset(pressedKeys,0,sizeof(pressedKeys));
     int k;while((k=GetKeyPressed())>0) if(k<512) pressedKeys[k]=1;
     hj_platform_poll(clickEdges);
+    if(key_pressed(KEY_M)) hj_audio_toggle_mute();
     return GetFrameTime();
 }
 int hj_replay(const char *path) {replay=LoadAutomationEventList(path);replayFrame=replayIndex=0;return replay.count>0;}
@@ -206,6 +233,21 @@ void hj_get_camera(float *out) {
     out[0]=activeCamera.position.x;out[1]=activeCamera.position.y;out[2]=activeCamera.position.z;
     out[3]=activeCamera.target.x;out[4]=activeCamera.target.y;out[5]=activeCamera.target.z;out[6]=activeCamera.fovy;
 }
+void hj_shadow_begin(const float *cam,const float *env) {
+    Vector3 target={cam[3],0,cam[5]},dir=Vector3Normalize((Vector3){env[0],env[1],env[2]});
+    Camera3D lightCamera={.position=Vector3Subtract(target,Vector3Scale(dir,45)),.target=target,
+        .up=fabsf(dir.y)>0.99f?(Vector3){0,0,1}:(Vector3){0,1,0},.fovy=52,.projection=CAMERA_ORTHOGRAPHIC};
+    shadowPass=1;
+    BeginTextureMode(shadowMap);ClearBackground(WHITE);BeginMode3D(lightCamera);
+    lightVP=MatrixMultiply(rlGetMatrixModelview(),rlGetMatrixProjection());
+}
+void hj_shadow_end(void) {
+    EndMode3D();EndTextureMode();shadowPass=0;
+    SetShaderValueMatrix(pbr,GetShaderLocation(pbr,"lightVP"),lightVP);
+}
+static Color sky_color(const float *rgb) {
+    return (Color){(unsigned char)(Clamp(rgb[0],0,1)*255),(unsigned char)(Clamp(rgb[1],0,1)*255),(unsigned char)(Clamp(rgb[2],0,1)*255),255};
+}
 void hj_scene_begin(int x,int y,int w,int h,int edit,const float *cam,const float *env,int grid) {
     viewRect=(Rectangle){x,y,w,h}; editorMode=edit; picked=-1;pickDistance=1e30f;
     int renderW=w,renderH=h;
@@ -231,8 +273,8 @@ void hj_scene_begin(int x,int y,int w,int h,int edit,const float *cam,const floa
         activeCamera.target=orbitTarget;
     }
     BeginTextureMode(viewport);
-    ClearBackground((Color){16,23,32,255});
-    DrawRectangleGradientV(0,0,renderW,renderH,(Color){17,25,37,255},(Color){32,44,53,255});
+    ClearBackground(sky_color(env+9));
+    DrawRectangleGradientV(0,0,renderW,renderH,sky_color(env+9),sky_color(env+12));
     BeginMode3D(activeCamera);
     if(edit&&grid) DrawGrid(40,1);
     uniform("viewPos",&activeCamera.position,SHADER_UNIFORM_VEC3);
@@ -241,6 +283,9 @@ void hj_scene_begin(int x,int y,int w,int h,int edit,const float *cam,const floa
     uniform("sunPower",env+6,SHADER_UNIFORM_FLOAT);
     uniform("ambientPower",env+7,SHADER_UNIFORM_FLOAT);
     uniform("exposure",env+8,SHADER_UNIFORM_FLOAT);
+    uniform("fogColor",env+12,SHADER_UNIFORM_VEC3);
+    uniform("fogDensity",env+15,SHADER_UNIFORM_FLOAT);
+    int shadows=env[16]>0.5f;uniform("useShadows",&shadows,SHADER_UNIFORM_INT);
 }
 void hj_light(int index,const float *data) {
     char name[64];
@@ -271,7 +316,7 @@ static Texture2D get_texture(const char *path) {
     for(int i=0;i<textureCount;i++) if(!strcmp(textures[i].path,path)) return textures[i].texture;
     Texture2D t={0};
     if(FileExists(path)) t=LoadTexture(path);
-    if(t.id) {GenTextureMipmaps(&t);SetTextureFilter(t,TEXTURE_FILTER_TRILINEAR);}
+    if(t.id) {GenTextureMipmaps(&t);SetTextureFilter(t,TEXTURE_FILTER_TRILINEAR);SetTextureWrap(t,TEXTURE_WRAP_REPEAT);}
     else snprintf(nativeError,sizeof(nativeError),"Cannot load texture: %s",path);
     if(textureCount<256) {snprintf(textures[textureCount].path,2048,"%s",path);textures[textureCount++].texture=t;}
     return t;
@@ -281,6 +326,10 @@ void hj_draw_entity(int id,const float *d,const char *meshPath,const char *textu
     Matrix scale=MatrixScale(d[6],d[7],d[8]);
     Matrix rotation=MatrixRotateZYX((Vector3){d[3]*DEG2RAD,d[4]*DEG2RAD,d[5]*DEG2RAD});
     Matrix transform=MatrixMultiply(MatrixMultiply(MatrixMultiply(model->transform,scale),rotation),MatrixTranslate(d[0],d[1],d[2]));
+    if(shadowPass) {
+        for(int i=0;i<model->meshCount;i++) {Material mat=model->materials[model->meshMaterial[i]];mat.shader=depthShader;DrawMesh(model->meshes[i],mat,transform);}
+        return;
+    }
     uniform("baseColor",d+9,SHADER_UNIFORM_VEC3);
     uniform("metalness",d+12,SHADER_UNIFORM_FLOAT);
     uniform("roughness",d+13,SHADER_UNIFORM_FLOAT);
@@ -290,6 +339,7 @@ void hj_draw_entity(int id,const float *d,const char *meshPath,const char *textu
         Material mat=model->materials[model->meshMaterial[i]];
         MaterialMap maps[MAX_MATERIAL_MAPS];
         memcpy(maps,mat.maps,sizeof(maps));mat.maps=maps;mat.shader=pbr;
+        mat.maps[MATERIAL_MAP_HEIGHT].texture=shadowMap.depth;
         if(tex.id) mat.maps[MATERIAL_MAP_ALBEDO].texture=tex;
         DrawMesh(model->meshes[i],mat,transform);
         if(editorMode && guiEnabled && mouse_pressed() && CheckCollisionPointRec(GetMousePosition(),viewRect)) {
@@ -322,7 +372,7 @@ void hj_scene_end(void) {
     DrawTexturePro(viewport.texture,(Rectangle){0,0,viewportW,-viewportH},viewRect,(Vector2){0,0},0,WHITE);
 }
 
-typedef struct {lua_State *L; int module; char message[2048]; char hud[2048];} ScriptVM;
+typedef struct {lua_State *L; int module; char message[2048]; char hud[2048]; char root[2048];} ScriptVM;
 static ScriptVM *owner(lua_State *L) {return *(ScriptVM **)lua_getextraspace(L);}
 static int script_print(lua_State *L) {
     ScriptVM *vm=owner(L);size_t used=strlen(vm->message);
@@ -334,9 +384,10 @@ static int script_print(lua_State *L) {
     return 0;
 }
 static void instruction_limit(lua_State *L,lua_Debug *ar) {(void)ar;luaL_error(L,"Script exceeded its per-call instruction budget (200000)");}
-void *hj_lua_load(const char *path) {
+void *hj_lua_load(const char *path,const char *root) {
     ScriptVM *vm=calloc(1,sizeof(*vm));
     if(!vm) return NULL;
+    snprintf(vm->root,sizeof(vm->root),"%s",root);
     vm->L=luaL_newstate();if(!vm->L){free(vm);return NULL;}
     lua_State *L=vm->L;*(ScriptVM **)lua_getextraspace(L)=vm;
     luaL_openlibs(L);lua_pushcfunction(L,script_print);lua_setglobal(L,"print");
@@ -360,10 +411,21 @@ static int scene_get(lua_State *L) {
     // scene:get accepts a stable entity ID or an entity name.
     lua_getfield(L,1,lua_isnumber(L,2)?"by_id":"by_name");lua_pushvalue(L,2);lua_gettable(L,-2);return 1;
 }
+static int scene_audio(lua_State *L) {
+    const char *asset=luaL_checkstring(L,2);
+    if(asset[0]=='/'||strstr(asset,"..")) return luaL_error(L,"Audio path must be project-relative");
+    float volume=Clamp((float)luaL_optnumber(L,3,1),0,1),pitch=Clamp((float)luaL_optnumber(L,4,1),0.25f,3);
+    char path[4096];snprintf(path,sizeof(path),"%s/%s",owner(L)->root,asset);
+    int loop=lua_toboolean(L,lua_upvalueindex(1));
+    if(!hj_audio_play(path,volume,pitch,loop)) return luaL_error(L,"Cannot load audio: %s",asset);
+    return 0;
+}
 void hj_lua_world_begin(void *ptr,const float *cam) {
     ScriptVM *vm=ptr;lua_State *L=vm->L;lua_settop(L,0);
     lua_newtable(L);lua_newtable(L);lua_setfield(L,-2,"by_id");lua_newtable(L);lua_setfield(L,-2,"by_name");
     lua_pushcfunction(L,scene_get);lua_setfield(L,-2,"get");
+    lua_pushboolean(L,0);lua_pushcclosure(L,scene_audio,1);lua_setfield(L,-2,"sound");
+    lua_pushboolean(L,1);lua_pushcclosure(L,scene_audio,1);lua_setfield(L,-2,"loop");
     lua_newtable(L);setvec(L,"eye",cam);setvec(L,"target",cam+3);setnum(L,"fov",cam[6]);lua_setfield(L,-2,"camera");
     lua_setglobal(L,"scene");
 }
