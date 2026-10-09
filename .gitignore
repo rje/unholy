@@ -1,0 +1,10 @@
+build/
+dist/
+*.hi
+*.o
+*.dyn_hi
+*.dyn_o
+.DS_Store
+dist-newstyle/
+projects/untitled-*/
+test-output/
