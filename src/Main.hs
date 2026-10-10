@@ -11,10 +11,11 @@ import System.FilePath
 import System.Exit
 import GHC.IO.Encoding (setLocaleEncoding,utf8)
 import Control.Monad (when,foldM)
+import Control.Concurrent (runInBoundThread)
 import Text.Read (readMaybe)
 
 main :: IO ()
-main = do
+main = runInBoundThread $ do
   setLocaleEncoding utf8
   args<-getArgs
   when ("--help" `elem` args) $ do

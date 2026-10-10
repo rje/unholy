@@ -16,17 +16,10 @@ static int mouse_released(void);
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#define MAX_MATERIAL_MAPS 12
 
-// Flat, scalar FFI boundary. Ownership and application decisions live in Haskell.
-static Shader pbr, depthShader;
-static RenderTexture2D shadowMap;
-static Matrix lightVP;
-static int shadowPass;
-static RenderTexture2D viewport;
-static Camera3D activeCamera;
+// Window, widgets, input and Lua ABI only. Haskell owns the 3D renderer.
 static Font font;
-static int ownFont, viewportW, viewportH, editorMode, picked=-1, textFocus=-1, guiEnabled=1, clipped=0;
+static int ownFont, textFocus=-1, guiEnabled=1, clipped=0;
 static char editBuffer[2048];
 static unsigned char pressedKeys[512];
 static int clickEdges[2];
@@ -40,35 +33,25 @@ static void hj_platform_poll(int *out) {out[0]=out[1]=0;}
 static void hj_platform_close(void) {}
 #endif
 static Rectangle clipRect;
-static Rectangle viewRect;
-static float pickDistance, orbitYaw=0.74f, orbitPitch=0.48f, orbitDistance=17.5f;
-static Vector3 orbitTarget={0,1,0};
 static char nativeError[1024];
 static AutomationEventList replay;
 static unsigned int replayFrame,replayIndex;
 static const Color bg={27,28,31,255}, panel={38,39,43,255}, border={57,59,65,255};
 static const Color ink={218,221,229,255}, muted={149,153,165,255}, accent={98,161,246,255};
 
-typedef struct { char path[2048]; Model model; } ModelEntry;
-typedef struct { char path[2048]; Texture2D texture; } TextureEntry;
-static ModelEntry models[256];
-static TextureEntry textures[256];
-static int modelCount, textureCount;
 void hj_audio_init(void);
 void hj_audio_close(void);
 void hj_audio_stop(void);
 void hj_audio_toggle_mute(void);
 int hj_audio_play(const char *path,float volume,float pitch,int loop);
 
-static void uniform(const char *name, const void *value, int type) {
-    SetShaderValue(pbr,GetShaderLocation(pbr,name),value,type);
-}
 static void txt(const char *s,float x,float y,float size,Color color) {
     DrawTextEx(font,s,(Vector2){x,y},size,0.5f,color);
 }
 int hj_init(const char *title,const char *assetRoot) {
+    (void)assetRoot;
     SetTraceLogLevel(LOG_WARNING);
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE|FLAG_MSAA_4X_HINT|FLAG_VSYNC_HINT);
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE|FLAG_WINDOW_HIGHDPI|FLAG_MSAA_4X_HINT|FLAG_VSYNC_HINT);
     InitWindow(1440,900,title);
     if (!IsWindowReady()) return 0;
     hj_platform_init(GetWindowHandle());
@@ -103,46 +86,12 @@ int hj_init(const char *title,const char *assetRoot) {
     GuiSetStyle(BUTTON,TEXT_ALIGNMENT,TEXT_ALIGN_LEFT);
     GuiSetStyle(BUTTON,TEXT_PADDING,10);
     GuiSetStyle(SLIDER,SLIDER_PADDING,0);
-    char vs[4096],fs[4096];
-    snprintf(vs,sizeof(vs),"%s/shaders/pbr.vs",assetRoot);
-    snprintf(fs,sizeof(fs),"%s/shaders/pbr.fs",assetRoot);
-    pbr=LoadShader(vs,fs);
-    if (!IsShaderValid(pbr) || GetShaderLocation(pbr,"roughness")<0) {
-        snprintf(nativeError,sizeof(nativeError),"PBR shader failed to load: %s",fs);
-        return 0;
-    }
-    pbr.locs[SHADER_LOC_MATRIX_MODEL]=GetShaderLocation(pbr,"matModel");
-    pbr.locs[SHADER_LOC_MATRIX_NORMAL]=GetShaderLocation(pbr,"matNormal");
-    pbr.locs[SHADER_LOC_VECTOR_VIEW]=GetShaderLocation(pbr,"viewPos");
-    pbr.locs[SHADER_LOC_MAP_HEIGHT]=GetShaderLocation(pbr,"shadowMap");
-    snprintf(vs,sizeof(vs),"%s/shaders/depth.vs",assetRoot);
-    snprintf(fs,sizeof(fs),"%s/shaders/depth.fs",assetRoot);
-    depthShader=LoadShader(vs,fs);
-    if(!IsShaderValid(depthShader)) {snprintf(nativeError,sizeof(nativeError),"Cannot load shadow shader");return 0;}
-    // Depth-only target, following raylib's shadowmap rendering example.
-    shadowMap.id=rlLoadFramebuffer();shadowMap.texture.width=shadowMap.texture.height=2048;
-    rlEnableFramebuffer(shadowMap.id);
-    shadowMap.depth=(Texture2D){.id=rlLoadTextureDepth(2048,2048,false),.width=2048,.height=2048,.mipmaps=1,.format=19};
-    rlFramebufferAttach(shadowMap.id,shadowMap.depth.id,RL_ATTACHMENT_DEPTH,RL_ATTACHMENT_TEXTURE2D,0);
-    if(!rlFramebufferComplete(shadowMap.id)) {snprintf(nativeError,sizeof(nativeError),"Cannot create shadow framebuffer");return 0;}
-    rlDisableFramebuffer();
-    SetTextureWrap(shadowMap.depth,TEXTURE_WRAP_CLAMP);
     return 1;
-}
-void hj_unload_assets(void) {
-    for(int i=0;i<modelCount;i++) UnloadModel(models[i].model);
-    for(int i=0;i<textureCount;i++) UnloadTexture(textures[i].texture);
-    modelCount=textureCount=0;
 }
 void hj_close(void) {
     hj_platform_close();
     hj_audio_close();
     if(replay.events) UnloadAutomationEventList(replay);
-    hj_unload_assets();
-    if (viewport.id) UnloadRenderTexture(viewport);
-    UnloadShader(pbr);
-    UnloadShader(depthShader);
-    if(shadowMap.id) rlUnloadFramebuffer(shadowMap.id);
     if(ownFont) UnloadFont(font);
     CloseWindow();
 }
@@ -228,148 +177,12 @@ float hj_wheel(float x,float y,float w,float h) {
 }
 void hj_clip(float x,float y,float w,float h) { clipRect=(Rectangle){x,y,w,h};clipped=1;BeginScissorMode((int)x,(int)y,(int)w,(int)h); }
 void hj_unclip(void) { clipped=0;EndScissorMode(); }
-void hj_focus(const float *p) { orbitTarget=(Vector3){p[0],p[1],p[2]}; orbitDistance=7; }
-void hj_get_camera(float *out) {
-    out[0]=activeCamera.position.x;out[1]=activeCamera.position.y;out[2]=activeCamera.position.z;
-    out[3]=activeCamera.target.x;out[4]=activeCamera.target.y;out[5]=activeCamera.target.z;out[6]=activeCamera.fovy;
-}
-void hj_shadow_begin(const float *cam,const float *env) {
-    Vector3 target={cam[3],0,cam[5]},dir=Vector3Normalize((Vector3){env[0],env[1],env[2]});
-    Camera3D lightCamera={.position=Vector3Subtract(target,Vector3Scale(dir,45)),.target=target,
-        .up=fabsf(dir.y)>0.99f?(Vector3){0,0,1}:(Vector3){0,1,0},.fovy=52,.projection=CAMERA_ORTHOGRAPHIC};
-    shadowPass=1;
-    BeginTextureMode(shadowMap);ClearBackground(WHITE);BeginMode3D(lightCamera);
-    lightVP=MatrixMultiply(rlGetMatrixModelview(),rlGetMatrixProjection());
-}
-void hj_shadow_end(void) {
-    EndMode3D();EndTextureMode();shadowPass=0;
-    SetShaderValueMatrix(pbr,GetShaderLocation(pbr,"lightVP"),lightVP);
-}
-static Color sky_color(const float *rgb) {
-    return (Color){(unsigned char)(Clamp(rgb[0],0,1)*255),(unsigned char)(Clamp(rgb[1],0,1)*255),(unsigned char)(Clamp(rgb[2],0,1)*255),255};
-}
-void hj_scene_begin(int x,int y,int w,int h,int edit,const float *cam,const float *env,int grid) {
-    viewRect=(Rectangle){x,y,w,h}; editorMode=edit; picked=-1;pickDistance=1e30f;
-    int renderW=w,renderH=h;
-    if(renderW!=viewportW||renderH!=viewportH) {
-        if(viewport.id) UnloadRenderTexture(viewport);
-        viewport=LoadRenderTexture(renderW,renderH); viewportW=renderW;viewportH=renderH;
-        SetTextureFilter(viewport.texture,TEXTURE_FILTER_BILINEAR);
-    }
-    activeCamera=(Camera3D){.position={cam[0],cam[1],cam[2]},.target={cam[3],cam[4],cam[5]},.up={0,1,0},.fovy=cam[6],.projection=CAMERA_PERSPECTIVE};
-    if(edit) {
-        int hover=CheckCollisionPointRec(GetMousePosition(),viewRect);
-        if(hover&&guiEnabled) {
-            Vector2 delta=GetMouseDelta();
-            if(IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {orbitYaw-=delta.x*0.006f; orbitPitch=Clamp(orbitPitch+delta.y*0.006f,-1.45f,1.45f);}
-            if(IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)) {
-                Vector3 right={cosf(orbitYaw),0,-sinf(orbitYaw)};
-                orbitTarget=Vector3Add(orbitTarget,Vector3Scale(right,-delta.x*orbitDistance*0.0013f));
-                orbitTarget.y+=delta.y*orbitDistance*0.0013f;
-            }
-            orbitDistance=Clamp(orbitDistance*powf(0.88f,GetMouseWheelMove()),1,300);
-        }
-        activeCamera.position=Vector3Add(orbitTarget,(Vector3){sinf(orbitYaw)*cosf(orbitPitch)*orbitDistance,sinf(orbitPitch)*orbitDistance,cosf(orbitYaw)*cosf(orbitPitch)*orbitDistance});
-        activeCamera.target=orbitTarget;
-    }
-    BeginTextureMode(viewport);
-    ClearBackground(sky_color(env+9));
-    DrawRectangleGradientV(0,0,renderW,renderH,sky_color(env+9),sky_color(env+12));
-    BeginMode3D(activeCamera);
-    if(edit&&grid) DrawGrid(40,1);
-    uniform("viewPos",&activeCamera.position,SHADER_UNIFORM_VEC3);
-    uniform("sunDirection",env,SHADER_UNIFORM_VEC3);
-    uniform("sunColor",env+3,SHADER_UNIFORM_VEC3);
-    uniform("sunPower",env+6,SHADER_UNIFORM_FLOAT);
-    uniform("ambientPower",env+7,SHADER_UNIFORM_FLOAT);
-    uniform("exposure",env+8,SHADER_UNIFORM_FLOAT);
-    uniform("fogColor",env+12,SHADER_UNIFORM_VEC3);
-    uniform("fogDensity",env+15,SHADER_UNIFORM_FLOAT);
-    int shadows=env[16]>0.5f;uniform("useShadows",&shadows,SHADER_UNIFORM_INT);
-}
-void hj_light(int index,const float *data) {
-    char name[64];
-    snprintf(name,sizeof(name),"lightPosition[%d]",index);uniform(name,data,SHADER_UNIFORM_VEC3);
-    snprintf(name,sizeof(name),"lightColor[%d]",index);uniform(name,data+3,SHADER_UNIFORM_VEC3);
-    snprintf(name,sizeof(name),"lightPower[%d]",index);uniform(name,data+6,SHADER_UNIFORM_FLOAT);
-}
-void hj_light_count(int n) {uniform("lightCount",&n,SHADER_UNIFORM_INT);}
-static Model *get_model(const char *path) {
-    for(int i=0;i<modelCount;i++) if(strcmp(models[i].path,path)==0) return &models[i].model;
-    if(modelCount>=256) return &models[0].model;
-    Model m={0};
-    if(!strcmp(path,"cube")) m=LoadModelFromMesh(GenMeshCube(1,1,1));
-    else if(!strcmp(path,"sphere")) m=LoadModelFromMesh(GenMeshSphere(0.5f,32,32));
-    else if(!strcmp(path,"plane")) m=LoadModelFromMesh(GenMeshPlane(1,1,1,1));
-    else if(!strcmp(path,"cylinder")) m=LoadModelFromMesh(GenMeshCylinder(0.5f,1,32));
-    else if(!strcmp(path,"torus")) m=LoadModelFromMesh(GenMeshTorus(0.2f,0.8f,24,32));
-    else if(FileExists(path)) m=LoadModel(path);
-    if(!IsModelValid(m)) {
-        snprintf(nativeError,sizeof(nativeError),"Cannot load mesh: %s",path);
-        if(m.meshCount) UnloadModel(m);
-        m=LoadModelFromMesh(GenMeshCube(1,1,1));
-    }
-    snprintf(models[modelCount].path,2048,"%s",path);models[modelCount].model=m;
-    return &models[modelCount++].model;
-}
-static Texture2D get_texture(const char *path) {
-    for(int i=0;i<textureCount;i++) if(!strcmp(textures[i].path,path)) return textures[i].texture;
-    Texture2D t={0};
-    if(FileExists(path)) t=LoadTexture(path);
-    if(t.id) {GenTextureMipmaps(&t);SetTextureFilter(t,TEXTURE_FILTER_TRILINEAR);SetTextureWrap(t,TEXTURE_WRAP_REPEAT);}
-    else snprintf(nativeError,sizeof(nativeError),"Cannot load texture: %s",path);
-    if(textureCount<256) {snprintf(textures[textureCount].path,2048,"%s",path);textures[textureCount++].texture=t;}
-    return t;
-}
-void hj_draw_entity(int id,const float *d,const char *meshPath,const char *texturePath,int selected) {
-    Model *model=get_model(meshPath);
-    Matrix scale=MatrixScale(d[6],d[7],d[8]);
-    Matrix rotation=MatrixRotateZYX((Vector3){d[3]*DEG2RAD,d[4]*DEG2RAD,d[5]*DEG2RAD});
-    Matrix transform=MatrixMultiply(MatrixMultiply(MatrixMultiply(model->transform,scale),rotation),MatrixTranslate(d[0],d[1],d[2]));
-    if(shadowPass) {
-        for(int i=0;i<model->meshCount;i++) {Material mat=model->materials[model->meshMaterial[i]];mat.shader=depthShader;DrawMesh(model->meshes[i],mat,transform);}
-        return;
-    }
-    uniform("baseColor",d+9,SHADER_UNIFORM_VEC3);
-    uniform("metalness",d+12,SHADER_UNIFORM_FLOAT);
-    uniform("roughness",d+13,SHADER_UNIFORM_FLOAT);
-    uniform("emission",d+14,SHADER_UNIFORM_FLOAT);
-    Texture2D tex={0}; if(texturePath[0]) tex=get_texture(texturePath);
-    for(int i=0;i<model->meshCount;i++) {
-        Material mat=model->materials[model->meshMaterial[i]];
-        MaterialMap maps[MAX_MATERIAL_MAPS];
-        memcpy(maps,mat.maps,sizeof(maps));mat.maps=maps;mat.shader=pbr;
-        mat.maps[MATERIAL_MAP_HEIGHT].texture=shadowMap.depth;
-        if(tex.id) mat.maps[MATERIAL_MAP_ALBEDO].texture=tex;
-        DrawMesh(model->meshes[i],mat,transform);
-        if(editorMode && guiEnabled && mouse_pressed() && CheckCollisionPointRec(GetMousePosition(),viewRect)) {
-            Vector2 local={GetMouseX()-viewRect.x,GetMouseY()-viewRect.y};
-            Ray ray=GetScreenToWorldRayEx(local,activeCamera,(int)viewRect.width,(int)viewRect.height);
-            RayCollision hit=GetRayCollisionMesh(ray,model->meshes[i],transform);
-            if(hit.hit&&hit.distance<pickDistance) {picked=id;pickDistance=hit.distance;}
-        }
-    }
-    if(selected&&editorMode) {
-        BoundingBox box=GetModelBoundingBox(*model);
-        BoundingBox bounds={{1e30f,1e30f,1e30f},{-1e30f,-1e30f,-1e30f}};
-        for(int i=0;i<8;i++) {
-            Vector3 corner=Vector3Transform((Vector3){i&1?box.max.x:box.min.x,i&2?box.max.y:box.min.y,i&4?box.max.z:box.min.z},transform);
-            bounds.min=Vector3Min(bounds.min,corner);bounds.max=Vector3Max(bounds.max,corner);
-        }
-        DrawBoundingBox(bounds,accent);
-        Vector3 p={d[0],d[1],d[2]};
-        DrawLine3D(p,Vector3Add(p,(Vector3){1.5f,0,0}),RED);
-        DrawLine3D(p,Vector3Add(p,(Vector3){0,1.5f,0}),GREEN);
-        DrawLine3D(p,Vector3Add(p,(Vector3){0,0,1.5f}),BLUE);
-    }
-}
-void hj_draw_light(const float *data,int selected) {
-    if(editorMode) DrawSphereWires((Vector3){data[0],data[1],data[2]},selected?0.2f:0.12f,8,12,selected?accent:(Color){255,214,132,255});
-}
-int hj_picked(void) {return picked;}
-void hj_scene_end(void) {
-    EndMode3D();EndTextureMode();
-    DrawTexturePro(viewport.texture,(Rectangle){0,0,viewportW,-viewportH},viewRect,(Vector2){0,0},0,WHITE);
+// Flat mouse snapshot, including replay/platform click edges used by the UI.
+void hj_render_input(float *out) {
+    Vector2 mouse=GetMousePosition(),delta=GetMouseDelta();
+    out[0]=mouse.x;out[1]=mouse.y;out[2]=delta.x;out[3]=delta.y;
+    out[4]=GetMouseWheelMove();out[5]=IsMouseButtonDown(MOUSE_BUTTON_RIGHT);
+    out[6]=IsMouseButtonDown(MOUSE_BUTTON_MIDDLE);out[7]=mouse_pressed();out[8]=guiEnabled;
 }
 
 typedef struct {lua_State *L; int module; char message[2048]; char hud[2048]; char root[2048];} ScriptVM;

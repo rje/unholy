@@ -44,7 +44,7 @@ runEditor :: FilePath -> FilePath -> Project -> Maybe Int -> Maybe FilePath -> I
 runEditor engineAssets path p frameLimit capture = do
   a<-listAssets (takeDirectory path)
   let initial=Editor p path Nothing (fst <$> IM.lookupMin (names (world p))) False False False
-        ["Ready. Select an entity; F5 plays the project.","HJ / native Haskell + raylib + Bullet + Lua"] "" 0 EntityTab True 0 0 0 Nothing [] [] (sort a) engineAssets
+        ["Ready. Select an entity; F5 plays the project.","HJ / Haskell renderer + Bullet + Lua"] "" 0 EntityTab True 0 0 0 Nothing [] [] (sort a) engineAssets
   loop 0 initial `finally` N.close
   where
     loop frame s = do

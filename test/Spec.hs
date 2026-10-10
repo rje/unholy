@@ -11,6 +11,9 @@ import System.Directory
 import System.FilePath
 import Data.List (isInfixOf)
 import Control.Exception (finally)
+import qualified HJ.Renderer.Camera as C
+import qualified Linear as L
+import qualified Data.Vector.Storable as VS
 
 assert :: String -> Bool -> IO ()
 assert label good = unless good (ioError (userError label))
@@ -21,6 +24,22 @@ load name = loadProject ("projects" </> name </> projectFile) >>= either (ioErro
 
 main :: IO ()
 main = do
+  test "renderer camera rays, transformed picking and parallel bounds" $ do
+    let cam=Camera (V3 0 0 5) (V3 0 0 0) 45
+        mouse=C.Mouse 500 350 0 0 0 False False True True
+        ray=C.screenRay (100,50,800,600) cam mouse
+        tr=Transform (V3 0 0 0) (V3 0 90 0) (V3 2 1 0.5)
+        model=C.modelMatrix tr L.identity
+        triangle=VS.fromList [L.V3 (-1) (-1) 0,L.V3 1 (-1) 0,L.V3 0 1 0]
+        plane=Transform (V3 0 0 1) (V3 0 0 30) (V3 2 1 0.5)
+        transformed=C.objectRay (C.modelMatrix plane L.identity) ray
+        nearHit=C.rayMesh transformed (C.boundsOf triangle) triangle VS.empty
+        moved=C.transformPoint model (L.V3 1 0 0)
+    assert "center pixel points at camera target" (L.norm (C.rayDirection ray-L.V3 0 0 (-1))<0.0001)
+    assert "rotation/scale order preserves world geometry" (L.norm (moved-L.V3 0 0 (-2))<0.0001)
+    assert "picking retains world distance under rotated nonuniform scale" (maybe False (\t->abs (t-4)<0.0001) nearHit)
+    assert "parallel ray outside bounds misses" (not (C.rayBounds (C.Ray (L.V3 2 0 5) (L.V3 0 0 (-1))) (L.V3 (-1) (-1) (-1),L.V3 1 1 1)))
+    assert "parallel ray on boundary intersects" (C.rayBounds (C.Ray (L.V3 1 0 5) (L.V3 0 0 (-1))) (L.V3 (-1) (-1) (-1),L.V3 1 1 1))
   test "typed ECS joins, duplication and deletion" $ do
     let (e,w)=spawnMesh "Sphere" "sphere" emptyWorld
         withBody=w {bodies=IM.insert e defaultBody (bodies w),scripts=IM.insert e "assets/test.lua" (scripts w)}

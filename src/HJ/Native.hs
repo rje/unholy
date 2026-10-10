@@ -4,14 +4,17 @@ module HJ.Native where
 import HJ.Types
 import Foreign
 import Foreign.C
-import Control.Monad (forM_, when)
-import System.FilePath ((</>))
-import HJ.Project (builtins)
-import qualified Data.IntMap.Strict
+import Control.Monad (unless)
+import qualified HJ.Renderer as R
+import qualified HJ.Renderer.GL as G
+import qualified Graphics.GL as GL
+import Data.IORef
+import System.IO.Unsafe (unsafePerformIO)
+import Control.Exception (IOException, try, finally)
+import Control.Concurrent (isCurrentThreadBound, myThreadId, ThreadId)
 
 foreign import ccall unsafe "hj_init" cInit :: CString -> CString -> IO CInt
-foreign import ccall unsafe "hj_close" close :: IO ()
-foreign import ccall unsafe "hj_unload_assets" unloadAssets :: IO ()
+foreign import ccall unsafe "hj_close" cClose :: IO ()
 foreign import ccall unsafe "hj_should_close" cShouldClose :: IO CInt
 foreign import ccall unsafe "hj_width" cWidth :: IO CInt
 foreign import ccall unsafe "hj_height" cHeight :: IO CInt
@@ -25,7 +28,7 @@ foreign import ccall unsafe "hj_clear_focus" clearFocus :: IO ()
 foreign import ccall unsafe "hj_ui_enabled" cUIEnabled :: CInt -> IO ()
 foreign import ccall unsafe "hj_inputs" cInputs :: Ptr CFloat -> IO ()
 foreign import ccall unsafe "hj_error" cError :: IO CString
-foreign import ccall unsafe "hj_clear_error" clearError :: IO ()
+foreign import ccall unsafe "hj_clear_error" cClearError :: IO ()
 foreign import ccall unsafe "hj_rect" cRect :: CFloat -> CFloat -> CFloat -> CFloat -> CInt -> IO ()
 foreign import ccall unsafe "hj_text" cText :: CFloat -> CFloat -> CFloat -> CString -> CInt -> IO ()
 foreign import ccall unsafe "hj_button" cButton :: CFloat -> CFloat -> CFloat -> CFloat -> CString -> CInt -> IO CInt
@@ -34,21 +37,44 @@ foreign import ccall unsafe "hj_textbox" cTextbox :: CInt -> CFloat -> CFloat ->
 foreign import ccall unsafe "hj_wheel" cWheel :: CFloat -> CFloat -> CFloat -> CFloat -> IO CFloat
 foreign import ccall unsafe "hj_clip" cClip :: CFloat -> CFloat -> CFloat -> CFloat -> IO ()
 foreign import ccall unsafe "hj_unclip" unclip :: IO ()
-foreign import ccall unsafe "hj_focus" cFocus :: Ptr CFloat -> IO ()
-foreign import ccall unsafe "hj_get_camera" cGetCamera :: Ptr CFloat -> IO ()
-foreign import ccall unsafe "hj_scene_begin" cSceneBegin :: CInt -> CInt -> CInt -> CInt -> CInt -> Ptr CFloat -> Ptr CFloat -> CInt -> IO ()
-foreign import ccall unsafe "hj_shadow_begin" cShadowBegin :: Ptr CFloat -> Ptr CFloat -> IO ()
-foreign import ccall unsafe "hj_shadow_end" cShadowEnd :: IO ()
 foreign import ccall unsafe "hj_audio_pause" cAudioPause :: CInt -> IO ()
-foreign import ccall unsafe "hj_light" cLight :: CInt -> Ptr CFloat -> IO ()
-foreign import ccall unsafe "hj_light_count" cLightCount :: CInt -> IO ()
-foreign import ccall unsafe "hj_draw_entity" cDrawEntity :: CInt -> Ptr CFloat -> CString -> CString -> CInt -> IO ()
-foreign import ccall unsafe "hj_draw_light" cDrawLight :: Ptr CFloat -> CInt -> IO ()
-foreign import ccall unsafe "hj_picked" cPicked :: IO CInt
-foreign import ccall unsafe "hj_scene_end" sceneEnd :: IO ()
+-- Compatibility facade for the existing editor. The window owns one explicit
+-- Haskell Renderer; every GPU operation runs on the bound context thread.
+{-# NOINLINE rendererState #-}
+rendererState :: IORef (Maybe (ThreadId,R.Renderer))
+rendererState = unsafePerformIO (newIORef Nothing)
+{-# NOINLINE startupError #-}
+startupError :: IORef String
+startupError = unsafePerformIO (newIORef "")
 
 initWindow :: String -> FilePath -> IO Bool
-initWindow title path = withCString title $ \t -> withCString path $ \p -> (/=0) <$> cInit t p
+initWindow title path = do
+  bound<-isCurrentThreadBound
+  unless bound (ioError (userError "Window/renderer initialization requires a bound OS thread"))
+  valid<-withCString title $ \t -> withCString path $ \p -> (/=0) <$> cInit t p
+  if not valid then pure False else do
+    initialized<-try (R.initialize path)
+    case initialized of
+      Left err -> writeIORef startupError (show (err::IOException)) >> cClose >> pure False
+      Right renderer -> do
+        owner<-myThreadId
+        writeIORef rendererState (Just (owner,renderer))
+        pure True
+withRenderer :: (R.Renderer -> IO a) -> IO a
+withRenderer action = do
+  current<-readIORef rendererState
+  owner<-myThreadId
+  case current of
+    Just (thread,renderer) | thread==owner -> action renderer
+    _ -> ioError (userError "Renderer used outside its owning window thread")
+close :: IO ()
+close = do
+  current<-readIORef rendererState
+  case current of
+    Nothing -> pure ()
+    Just _ -> withRenderer (\r -> R.close r `finally` (writeIORef rendererState Nothing >> cClose))
+unloadAssets :: IO ()
+unloadAssets = withRenderer R.unloadAssets
 pauseAudio :: Bool -> IO ()
 pauseAudio pause = cAudioPause (if pause then 1 else 0)
 shouldClose :: IO Bool
@@ -58,7 +84,12 @@ dimensions = (,) <$> (fromIntegral <$> cWidth) <*> (fromIntegral <$> cHeight)
 frameTime :: IO Float
 frameTime = realToFrac <$> cDt
 screenshot :: FilePath -> IO ()
-screenshot path = withCString path cScreenshot
+screenshot path = G.preservingState $ \_ -> do
+  -- EndDrawing swaps the window buffers. Capture the displayed front buffer,
+  -- rather than the previous frame left in the back buffer.
+  previous<-G.getInt GL.GL_READ_BUFFER
+  GL.glReadBuffer GL.GL_FRONT
+  withCString path cScreenshot `finally` GL.glReadBuffer (fromIntegral previous)
 loadReplay :: FilePath -> IO Bool
 loadReplay path = withCString path (fmap (/=0) . cReplay)
 key :: Int -> Bool -> IO Bool
@@ -68,7 +99,14 @@ uiEnabled enabled = cUIEnabled (if enabled then 1 else 0)
 inputs :: IO [Float]
 inputs = allocaArray 4 $ \p -> cInputs p >> map realToFrac <$> peekArray 4 p
 nativeError :: IO String
-nativeError = cError >>= peekCString
+nativeError = do
+  platform<-cError >>= peekCString
+  startup<-readIORef startupError
+  current<-readIORef rendererState
+  renderErrors<-maybe (pure []) (R.takeErrors . snd) current
+  pure (unlines (filter (not . null) ([platform,startup]++renderErrors)))
+clearError :: IO ()
+clearError = cClearError >> writeIORef startupError ""
 rect :: Float -> Float -> Float -> Float -> Int -> IO ()
 rect x y w h s = cRect (f x) (f y) (f w) (f h) (fromIntegral s)
 text :: Float -> Float -> Float -> String -> Int -> IO ()
@@ -90,9 +128,9 @@ wheel x y w h = realToFrac <$> cWheel (f x) (f y) (f w) (f h)
 clip :: Float -> Float -> Float -> Float -> IO ()
 clip x y w h = cClip (f x) (f y) (f w) (f h)
 focus :: V3 -> IO ()
-focus v = withFloats (vlist v) cFocus
+focus v = withRenderer (\r -> R.focus r v)
 getCamera :: IO Camera
-getCamera = allocaArray 7 $ \p -> cGetCamera p >> cameraFromData <$> (map realToFrac <$> peekArray 7 p)
+getCamera = withRenderer R.getCamera
 cameraData :: Camera -> [Float]
 cameraData c = vlist (eye c)++vlist (target c)++[fov c]
 cameraFromData :: [Float] -> Camera
@@ -103,27 +141,6 @@ f :: Float -> CFloat
 f = realToFrac
 
 drawScene :: FilePath -> Project -> (Float,Float,Float,Float) -> Bool -> Bool -> Maybe Entity -> IO (Maybe Entity)
-drawScene root p (x,y,w,h) edit grid selected = do
-  let env=environment p
-      drawEntities = forM_ (renderables (world p)) $ \(e,t,m,mat) ->
-        withFloats (componentData t mat) $ \d ->
-        withCString (if geometry m `elem` builtins then geometry m else root </> geometry m) $ \mesh ->
-        withCString (if null (texture m) then "" else root </> texture m) $ \tex -> cDrawEntity (fromIntegral e) d mesh tex (if Just e==selected then 1 else 0)
-  withFloats (cameraData (camera p)) $ \cam -> withFloats (vlist (sunDirection env)++vlist (sunColor env)++[sunPower env,ambient env,exposure env]++vlist (skyTop env)++vlist (skyBottom env)++[fogDensity env,if sunShadows env then 1 else 0]) $ \en -> do
-    when (sunShadows env) $ cShadowBegin cam en >> drawEntities >> cShadowEnd
-    cSceneBegin (round x) (round y) (max 1 (round w)) (max 1 (round h)) (if edit then 1 else 0) cam en (if grid then 1 else 0)
-  let ls=take 8 [(e,position t,l) | (e,l)<-imList (lights (world p)),Just t<-[imLookup e (transforms (world p))]]
-  cLightCount (fromIntegral (length ls))
-  forM_ (zip [0..] ls) $ \(i,(e,pos,l)) -> withFloats (vlist pos++vlist (lightColor l)++[intensity l]) $ \d -> do
-    cLight i d
-    when edit (cDrawLight d (if Just e==selected then 1 else 0))
-  drawEntities
-  picked<-fromIntegral <$> cPicked
-  sceneEnd
-  pure (if picked>0 then Just picked else selected)
-
--- Kept here to keep the native interface independent of the editor.
-imList :: Data.IntMap.Strict.IntMap a -> [(Int,a)]
-imList = Data.IntMap.Strict.toAscList
-imLookup :: Int -> Data.IntMap.Strict.IntMap a -> Maybe a
-imLookup = Data.IntMap.Strict.lookup
+drawScene root p view edit grid selected = do
+  screen<-dimensions
+  withRenderer (\r -> R.drawScene r root p view screen edit grid selected)

@@ -22,7 +22,7 @@ make test
 ```
 
 Tested here with GHC 9.14.1, raylib 6.0, Lua 5.5.1 and Bullet 3.25 on Apple
-silicon. Cabal supplies Aeson and its dependencies. The source also has Linux
+silicon. Cabal supplies Aeson, OpenGLRaw, linear and their dependencies. The source also has Linux
 build configuration, but Linux has not been qualified.
 
 ## Editor
@@ -115,19 +115,41 @@ Headless simulation validates referenced files without opening an audio device.
 ## Architecture and limits
 
 Haskell owns typed `IntMap` component stores, stable entity IDs, project JSON,
-the editor, play state, undo/redo and the fixed 120 Hz simulation loop. Components
+the editor, play state, undo/redo, the fixed 120 Hz simulation loop, and the 3D
+renderer. Components
 are **Name, Transform, Mesh, Material, Script, Light and Body**. Systems join the
 tables they need. Small scalar FFI adapters call established native libraries:
 
-- [raylib](https://github.com/raysan5/raylib): window/input, static mesh loading,
-  GPU resources, audio decoding/mixing/playback and OpenGL 3.3 drawing. The
-  depth-only shadow target follows its shadowmap rendering example.
+- [OpenGLRaw](https://hackage.haskell.org/package/OpenGLRaw): direct graphics API
+  bindings. Haskell creates/deletes GPU buffers, textures, shader programs and
+  framebuffer targets, and submits the shadow, PBR, editor overlay and viewport
+  composition passes. GPU shaders remain GLSL.
+- [linear](https://hackage.haskell.org/package/linear): Haskell vector/matrix
+  math for transforms, cameras, normal matrices and triangle picking.
+- [raylib](https://github.com/raysan5/raylib): window/input, static mesh and image
+  importing, audio decoding/mixing/playback, and the editor's 2D UI backend.
+  Its model importer creates temporary native GPU data; Haskell copies the CPU
+  geometry and imported albedo textures, then immediately releases the native
+  model. All retained 3D resources and draw calls belong to the Haskell renderer.
 - [raygui](https://github.com/raysan5/raygui): editor widgets, with a charcoal and
   blue theme. A pinned header and its license live in `native/vendor/`.
 - [Lua](https://www.lua.org/manual/5.5/): embedded per-entity script instances.
 - [Bullet](https://github.com/bulletphysics/bullet3): rigid bodies, collision
   detection, gravity, friction, restitution and continuous collision settings.
 - [Aeson](https://hackage.haskell.org/package/aeson): project JSON parsing/encoding.
+
+`HJ.Renderer` owns the render passes and per-window resource caches;
+`HJ.Renderer.GL` owns shader compilation, uploads, framebuffer allocation and
+the shared UI context boundary; `HJ.Renderer.Assets` copies importer data into
+Haskell-owned arrays; `HJ.Renderer.Camera` owns camera/picking math. The renderer
+runs on the window's bound OS thread and explicitly releases resources there.
+It flushes pending UI batches and restores OpenGL state around its passes.
+Viewport targets use actual framebuffer pixels, supporting Retina scaling.
+`native/assets.c` is an importer ABI adapter and contains no scene drawing.
+
+The local Cabal project relaxes only OpenGLRaw's published `base` and
+`containers` upper bounds for GHC 9.14.1. The frozen versions are exercised by
+the headless and GPU checks below.
 
 PBR uses a Cook-Torrance GGX BRDF, Schlick Fresnel, Smith geometry, an
 energy-conserving diffuse term, directional sun plus up to eight point lights,
@@ -154,12 +176,18 @@ Linux export requires the native libraries installed on the destination machine.
 ./build/hj --replay test/editor-smoke.rae --frames 460
 ```
 
-`make test` checks ECS lifecycle, sample persistence, a falling sphere's Bullet
+`make test` checks camera unprojection and picking under rotated/nonuniform
+transforms, ECS lifecycle, sample persistence, a falling sphere's Bullet
 contacts, Lua/component/camera synchronization and errors, the marble course
 through finish and restart using its real Lua + Bullet loop, and a physical
 knockdown collision. It also checks that the marble rides the actual level's
 kinematic lift and that the moving bridge and its decorations animate. The
 headless tests complement native visual/UI and audio-mixer checks.
+`make render-test` opens a real graphics context and checks GPU pixel changes
+from live PBR edits, shadow depth output, UI state preservation, cached mesh
+reuse, viewport resizing, picking, all sample projects, asset/shader error
+handling, project-switch cleanup and renderer disposal. Captures go to
+`build/verification/haskell-renderer/`. This suite requires a desktop display.
 `scripts/generate-samples.py` regenerates the checked-in scene data.
 `--replay` uses raylib's native automation-event format. The checked-in editor
 smoke replay drives toolbar clicks, pause/step/stop, project selection, keyboard

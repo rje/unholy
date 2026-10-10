@@ -11,3 +11,4 @@ test-output/
 __pycache__/
 *.pyc
 *.recovery
+screenshot*.png
