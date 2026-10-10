@@ -1,0 +1,6 @@
+# Editor: F5 play, roll into targets, release movement.
+c 4
+e 5 2 294 0 0 0
+e 6 1 294 0 0 0
+e 20 2 87 0 0 0
+e 140 1 87 0 0 0

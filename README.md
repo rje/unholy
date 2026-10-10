@@ -6,7 +6,7 @@ Lua scripting, a typed ECS, Bullet physics, and load/save/build/play projects.
 ## Run on macOS
 
 ```sh
-brew install ghc cabal-install pkg-config raylib lua bullet
+brew install ghc cabal-install pkg-config raylib bullet
 cabal update
 make app
 open build/HJ.app
@@ -102,21 +102,24 @@ Entity data: `id`, `name`, `position/rotation/scale` (`{x,y,z}`),
 `material.color` (`{x,y,z}`), `material.metallic/roughness/emission`, and optional
 `body.velocity` (`{x,y,z}`) / read-only `body.grounded`. Scripts can modify
 transforms, materials and velocities of existing entities. `scene.by_id` and
-`scene.by_name` expose the snapshot. `scene.camera.eye/target/fov` is editable.
+`scene.by_name` expose live entity proxies. `scene.camera.eye/target/fov` is editable.
 `input.x/z` are movement axes; `input.jump/restart` are held booleans. `print`
 appears in the editor console. Lua failures disable that script and report the
 error; each callback has a 200,000-instruction limit to catch accidental loops.
 Scripts are trusted local code with the standard Lua libraries available.
 `scene:sound(path, volume, pitch)` plays a cached sound once. Call
 `scene:loop(path, volume, pitch)` during updates to sustain an ambience or
-rolling loop; volume zero silences it. Playback uses raylib's audio mixer.
+rolling loop; volume zero stops it. Haskell caches at most 64 decoded clips,
+keeps one loop voice and up to eight overlapping effect voices per clip, reuses
+finished voices, and releases all project sounds on Stop. Pause remembers
+active voices; M toggles master mute. Playback uses raylib's audio mixer.
 Headless simulation validates referenced files without opening an audio device.
 
 ## Architecture and limits
 
 Haskell owns typed `IntMap` component stores, stable entity IDs, project JSON,
 the editor, play state, undo/redo, the fixed 120 Hz simulation loop, and the 3D
-renderer. Components
+renderer, scripting API, and audio resource/playback management. Components
 are **Name, Transform, Mesh, Material, Script, Light and Body**. Systems join the
 tables they need. Small scalar FFI adapters call established native libraries:
 
@@ -133,7 +136,9 @@ tables they need. Small scalar FFI adapters call established native libraries:
   model. All retained 3D resources and draw calls belong to the Haskell renderer.
 - [raygui](https://github.com/raysan5/raygui): editor widgets, with a charcoal and
   blue theme. A pinned header and its license live in `native/vendor/`.
-- [Lua](https://www.lua.org/manual/5.5/): embedded per-entity script instances.
+- [HsLua](https://hackage.haskell.org/package/hslua-core): protected Haskell
+  callbacks and bundled Lua 5.4.8 for per-entity script instances. Cabal builds
+  this matching interpreter; a system Lua installation is unnecessary.
 - [Bullet](https://github.com/bulletphysics/bullet3): rigid bodies, collision
   detection, gravity, friction, restitution and continuous collision settings.
 - [Aeson](https://hackage.haskell.org/package/aeson): project JSON parsing/encoding.
@@ -146,6 +151,23 @@ runs on the window's bound OS thread and explicitly releases resources there.
 It flushes pending UI batches and restores OpenGL state around its passes.
 Viewport targets use actual framebuffer pixels, supporting Retina scaling.
 `native/assets.c` is an importer ABI adapter and contains no scene drawing.
+
+`HJ.Script.API` exposes live proxies for entities and their components. Reads
+look up current Haskell ECS data on demand; setters update only the requested
+component. `scene:get`, `by_id`, and `pairs(scene.by_name)` keep the existing
+sample syntax, and retained entity/vector references see the current world.
+`HJ.Script` owns VM lifetime, callback dispatch, logs/HUD, and rollback of ECS
+and camera changes when a callback fails. Audio effects already triggered by
+a failing script cannot be rolled back. Body grounding, entity IDs/names and
+scene indexes are read-only; transform/material/vector fields remain editable.
+Script fields on proxy tables persist as ordinary Lua data. `native/lua.c`
+contains only the instruction-limit hook, whose error stays inside a protected
+Lua call. Scripts remain trusted code, not a security sandbox.
+
+`HJ.Audio` owns decoded-clip caches, a bounded voice pool, loop playback, pause,
+mute, and explicit release before the device closes. `native/audio.c` only
+adapts raylib sound structs and meters the mixer on its audio thread. Headless
+simulation checks audio file existence without initializing a device.
 
 The local Cabal project relaxes only OpenGLRaw's published `base` and
 `containers` upper bounds for GHC 9.14.1. The frozen versions are exercised by
@@ -182,13 +204,19 @@ contacts, Lua/component/camera synchronization and errors, the marble course
 through finish and restart using its real Lua + Bullet loop, and a physical
 knockdown collision. It also checks that the marble rides the actual level's
 kinematic lift and that the moving bridge and its decorations animate. The
-headless tests complement native visual/UI and audio-mixer checks.
+headless tests also cover live references, instance isolation, failed-call
+rollback, audio-path errors, overlapping voices, cache reuse, pause/mute and
+cleanup through an injected device backend.
 `make render-test` opens a real graphics context and checks GPU pixel changes
 from live PBR edits, shadow depth output, UI state preservation, cached mesh
 reuse, viewport resizing, picking, all sample projects, asset/shader error
-handling, project-switch cleanup and renderer disposal. Captures go to
+handling, project-switch cleanup and renderer disposal. It also verifies
+that sample sounds managed by Haskell produce nonzero native mixer output.
+Captures go to
 `build/verification/haskell-renderer/`. This suite requires a desktop display.
 `scripts/generate-samples.py` regenerates the checked-in scene data.
 `--replay` uses raylib's native automation-event format. The checked-in editor
 smoke replay drives toolbar clicks, pause/step/stop, project selection, keyboard
 movement and a window resize, captures screenshots and closes the window.
+`test/knockdown-smoke.rae` starts Play with F5 and rolls into the targets; run it
+with the Knockdown project and `--frames 210` for a bounded editor/player check.

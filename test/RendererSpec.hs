@@ -1,5 +1,6 @@
 module Main where
 
+import qualified HJ.Audio as Audio
 import HJ.Types
 import HJ.Project
 import qualified HJ.Native as N
@@ -61,6 +62,16 @@ checks :: R.Renderer -> IO ()
 checks r = do
   createDirectoryIfMissing True "build/verification/haskell-renderer"
   let rect=(230,70,640,480)
+  Audio.play "projects/marble-run/assets/audio/ambience.wav" 0.15 1 True
+  Audio.play "projects/marble-run/assets/audio/jump.wav" 0.25 1 False
+  Audio.play "projects/marble-run/assets/audio/jump.wav" 0.25 1.2 False
+  replicateM_ 12 (render fixture rect False)
+  (mixed,peak)<-Audio.mixStats
+  assert ("audio device produced no signal: "++show (mixed,peak)) (mixed>0 && peak>0.001)
+  Audio.pause True;replicateM_ 3 (render fixture rect False)
+  Audio.toggleMute;Audio.pause False;Audio.toggleMute
+  Audio.stop
+  pass ("Haskell-managed sample sounds reach the native mixer: "++show mixed++" frames, peak "++show peak)
   render fixture rect False
   red<-pixelAtCenter r
   let blueFixture=fixture {world=(world fixture) {materials=IM.adjust (\m->m {albedo=V3 0.05 0.05 0.9}) 2 (materials (world fixture))}}

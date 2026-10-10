@@ -2,9 +2,10 @@
 module HJ.Native where
 
 import HJ.Types
+import qualified HJ.Audio as Audio
 import Foreign
 import Foreign.C
-import Control.Monad (unless)
+import Control.Monad (unless, when)
 import qualified HJ.Renderer as R
 import qualified HJ.Renderer.GL as G
 import qualified Graphics.GL as GL
@@ -37,7 +38,6 @@ foreign import ccall unsafe "hj_textbox" cTextbox :: CInt -> CFloat -> CFloat ->
 foreign import ccall unsafe "hj_wheel" cWheel :: CFloat -> CFloat -> CFloat -> CFloat -> IO CFloat
 foreign import ccall unsafe "hj_clip" cClip :: CFloat -> CFloat -> CFloat -> CFloat -> IO ()
 foreign import ccall unsafe "hj_unclip" unclip :: IO ()
-foreign import ccall unsafe "hj_audio_pause" cAudioPause :: CInt -> IO ()
 -- Compatibility facade for the existing editor. The window owns one explicit
 -- Haskell Renderer; every GPU operation runs on the bound context thread.
 {-# NOINLINE rendererState #-}
@@ -53,9 +53,10 @@ initWindow title path = do
   unless bound (ioError (userError "Window/renderer initialization requires a bound OS thread"))
   valid<-withCString title $ \t -> withCString path $ \p -> (/=0) <$> cInit t p
   if not valid then pure False else do
+    Audio.initialize
     initialized<-try (R.initialize path)
     case initialized of
-      Left err -> writeIORef startupError (show (err::IOException)) >> cClose >> pure False
+      Left err -> writeIORef startupError (show (err::IOException)) >> Audio.close >> cClose >> pure False
       Right renderer -> do
         owner<-myThreadId
         writeIORef rendererState (Just (owner,renderer))
@@ -72,17 +73,21 @@ close = do
   current<-readIORef rendererState
   case current of
     Nothing -> pure ()
-    Just _ -> withRenderer (\r -> R.close r `finally` (writeIORef rendererState Nothing >> cClose))
+    Just _ -> withRenderer (\r -> R.close r `finally` (writeIORef rendererState Nothing >> Audio.close >> cClose))
 unloadAssets :: IO ()
 unloadAssets = withRenderer R.unloadAssets
 pauseAudio :: Bool -> IO ()
-pauseAudio pause = cAudioPause (if pause then 1 else 0)
+pauseAudio = Audio.pause
 shouldClose :: IO Bool
 shouldClose = (/=0) <$> cShouldClose
 dimensions :: IO (Float,Float)
 dimensions = (,) <$> (fromIntegral <$> cWidth) <*> (fromIntegral <$> cHeight)
 frameTime :: IO Float
-frameTime = realToFrac <$> cDt
+frameTime = do
+  dt<-realToFrac <$> cDt
+  mute<-key 77 True
+  when mute Audio.toggleMute
+  pure dt
 screenshot :: FilePath -> IO ()
 screenshot path = G.preservingState $ \_ -> do
   -- EndDrawing swaps the window buffers. Capture the displayed front buffer,

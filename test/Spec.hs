@@ -1,5 +1,6 @@
 module Main where
 
+import RuntimeSpec
 import HJ.Types
 import HJ.Project
 import HJ.JSON (encodeJSON)
@@ -90,6 +91,8 @@ main = do
     (syntaxR,_,syntaxErrors)<-startRuntime "test-output" p
     stopRuntime syntaxR
     assert "syntax errors reported" (not (null syntaxErrors))
+  test "Lua live entity access, retained references, validation and rollback" luaAccess
+  test "Haskell audio cache, overlapping voices, pause/mute and resource lifetime" audioPolicy
   test "Marble Run: controls, jump, checkpoint, finish, restart" marbleGame
   test "Marble Run: kinematic lift carries the marble and bridge assembly moves" marbleLift
   test "Knockdown: real Bullet collision topples a target" knockdownGame

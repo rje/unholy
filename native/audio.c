@@ -1,55 +1,40 @@
 #include "raylib.h"
-#include <stdio.h>
-#include <string.h>
+#include <stdlib.h>
 #include <math.h>
+#include <stdatomic.h>
 
-// raylib owns decoding, resampling, mixing and the platform audio device.
-typedef struct { char path[4096]; Sound sound; int resume; } Clip;
-static Clip clips[64];
-static int clipCount, muted, paused;
-static unsigned long mixedFrames;
-static float mixedPeak;
+// Struct ABI and real-time meter only. All resource/playback policy is Haskell.
+static atomic_ulong mixedFrames;
+static _Atomic float mixedPeak;
 static void meter(void *buffer,unsigned int frames) {
     const float *samples=buffer;
-    mixedFrames+=frames;
-    for(unsigned int i=0;i<frames*2;i++) if(fabsf(samples[i])>mixedPeak) mixedPeak=fabsf(samples[i]);
+    float peak=atomic_load(&mixedPeak);
+    for(unsigned int i=0;i<frames*2;i++) peak=fmaxf(peak,fabsf(samples[i]));
+    atomic_store(&mixedPeak,peak);atomic_fetch_add(&mixedFrames,frames);
 }
-void hj_audio_init(void) {
-    InitAudioDevice();
-    if(IsAudioDeviceReady()) {SetMasterVolume(0.7f);AttachAudioMixedProcessor(meter);}
+int hj_audio_init(void) {
+    atomic_store(&mixedFrames,0);atomic_store(&mixedPeak,0);
+    InitAudioDevice();if(!IsAudioDeviceReady()) return 0;
+    AttachAudioMixedProcessor(meter);return 1;
 }
-void hj_audio_toggle_mute(void) {
-    muted=!muted;if(IsAudioDeviceReady()) SetMasterVolume(muted?0:0.7f);
+void hj_audio_close(void) {if(IsAudioDeviceReady()) {DetachAudioMixedProcessor(meter);CloseAudioDevice();}}
+unsigned long hj_audio_frames(void) {return atomic_load(&mixedFrames);}
+float hj_audio_peak(void) {return atomic_load(&mixedPeak);}
+void hj_audio_master(float volume) {SetMasterVolume(volume);}
+void *hj_audio_load(const char *path) {
+    Sound *sound=malloc(sizeof(*sound));if(!sound) return NULL;
+    *sound=LoadSound(path);if(!IsSoundValid(*sound)) {free(sound);return NULL;}return sound;
 }
-void hj_audio_stop(void) {
-    for(int i=0;i<clipCount;i++) {StopSound(clips[i].sound);clips[i].resume=0;}paused=0;
+void *hj_audio_alias(void *source) {
+    Sound *sound=malloc(sizeof(*sound));if(!sound) return NULL;
+    *sound=LoadSoundAlias(*(Sound *)source);
+    if(!IsSoundValid(*sound)) {free(sound);return NULL;}return sound;
 }
-void hj_audio_pause(int pause) {
-    if(pause==paused) return;
-    paused=pause;
-    for(int i=0;i<clipCount;i++) {
-        if(pause) {clips[i].resume=IsSoundPlaying(clips[i].sound);if(clips[i].resume) PauseSound(clips[i].sound);}
-        else if(clips[i].resume) {ResumeSound(clips[i].sound);clips[i].resume=0;}
-    }
-}
-void hj_audio_close(void) {
-    if(IsAudioDeviceReady()) {DetachAudioMixedProcessor(meter);printf("Audio mix: %lu frames, peak %.3f\n",mixedFrames,mixedPeak);}
-    for(int i=0;i<clipCount;i++) UnloadSound(clips[i].sound);
-    clipCount=0;
-    if(IsAudioDeviceReady()) CloseAudioDevice();
-}
-int hj_audio_play(const char *path,float volume,float pitch,int loop) {
-    if(!FileExists(path)) return 0;
-    if(!IsAudioDeviceReady()) return 1; // Headless simulation has no audio device.
-    int index=0;while(index<clipCount&&strcmp(clips[index].path,path)) index++;
-    if(index==clipCount) {
-        if(clipCount==64) return 0;
-        Sound sound=LoadSound(path);if(!IsSoundValid(sound)) return 0;
-        snprintf(clips[index].path,sizeof(clips[index].path),"%s",path);clips[index].sound=sound;clipCount++;
-        printf("Audio loaded: %s\n",path);
-    }
-    SetSoundVolume(clips[index].sound,volume);
-    SetSoundPitch(clips[index].sound,pitch);
-    if(!paused && volume>0 && (!loop||!IsSoundPlaying(clips[index].sound))) PlaySound(clips[index].sound);
-    return 1;
-}
+void hj_audio_unload(void *sound,int alias) {if(alias) UnloadSoundAlias(*(Sound *)sound);else UnloadSound(*(Sound *)sound);free(sound);}
+void hj_audio_play(void *sound) {PlaySound(*(Sound *)sound);}
+void hj_audio_stop(void *sound) {StopSound(*(Sound *)sound);}
+void hj_audio_pause(void *sound) {PauseSound(*(Sound *)sound);}
+void hj_audio_resume(void *sound) {ResumeSound(*(Sound *)sound);}
+int hj_audio_playing(void *sound) {return IsSoundPlaying(*(Sound *)sound);}
+void hj_audio_volume(void *sound,float value) {SetSoundVolume(*(Sound *)sound,value);}
+void hj_audio_pitch(void *sound,float value) {SetSoundPitch(*(Sound *)sound,value);}

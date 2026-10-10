@@ -10,9 +10,9 @@ extra-source-files: assets/shaders/*.vs, assets/shaders/*.fs, native/vendor/rayg
 executable hj
   main-is: Main.hs
   hs-source-dirs: src
-  other-modules: HJ.Types, HJ.JSON, HJ.Project, HJ.Native, HJ.Script, HJ.Physics, HJ.Editor, HJ.Renderer, HJ.Renderer.GL, HJ.Renderer.Assets, HJ.Renderer.Camera
-  build-depends: base >=4.18 && <5, containers, directory, filepath, process, time, aeson, bytestring, text, OpenGLRaw >=3.3 && <3.4, linear >=1.23 && <1.24, vector
-  c-sources: native/hj.c, native/audio.c, native/assets.c
+  other-modules: HJ.Types, HJ.JSON, HJ.Project, HJ.Native, HJ.Audio, HJ.Script, HJ.Script.API, HJ.Physics, HJ.Editor, HJ.Renderer, HJ.Renderer.GL, HJ.Renderer.Assets, HJ.Renderer.Camera
+  build-depends: base >=4.18 && <5, containers, directory, filepath, process, time, aeson, bytestring, text, OpenGLRaw >=3.3 && <3.4, linear >=1.23 && <1.24, vector, hslua-core >=2.3.2 && <2.4
+  c-sources: native/hj.c, native/audio.c, native/assets.c, native/lua.c
   cxx-sources: native/physics.cpp
   cxx-options: -std=c++17
   if os(darwin)
@@ -22,7 +22,7 @@ executable hj
     frameworks: Cocoa
   else
     extra-libraries: stdc++
-  pkgconfig-depends: raylib >=5.5, lua >=5.4, bullet >=3
+  pkgconfig-depends: raylib >=5.5, bullet >=3
   default-language: Haskell2010
   ghc-options: -Wall -threaded -O2
 
@@ -30,14 +30,14 @@ test-suite hj-renderer-tests
   type: exitcode-stdio-1.0
   main-is: RendererSpec.hs
   hs-source-dirs: test, src
-  other-modules: HJ.Types, HJ.JSON, HJ.Project, HJ.Native, HJ.Renderer, HJ.Renderer.GL, HJ.Renderer.Assets, HJ.Renderer.Camera
-  build-depends: base >=4.18 && <5, containers, directory, filepath, process, time, aeson, bytestring, text, OpenGLRaw >=3.3 && <3.4, linear >=1.23 && <1.24, vector
-  c-sources: native/hj.c, native/audio.c, native/assets.c
+  other-modules: HJ.Types, HJ.JSON, HJ.Project, HJ.Native, HJ.Audio, HJ.Renderer, HJ.Renderer.GL, HJ.Renderer.Assets, HJ.Renderer.Camera
+  build-depends: base >=4.18 && <5, containers, directory, filepath, process, time, aeson, bytestring, text, OpenGLRaw >=3.3 && <3.4, linear >=1.23 && <1.24, vector, hslua-core >=2.3.2 && <2.4
+  c-sources: native/hj.c, native/audio.c, native/assets.c, native/lua.c
   if os(darwin)
     c-sources: native/input_macos.m
     cc-options: -fblocks
     frameworks: Cocoa
-  pkgconfig-depends: raylib >=5.5, lua >=5.4
+  pkgconfig-depends: raylib >=5.5
   default-language: Haskell2010
   ghc-options: -Wall -threaded -O2
 
@@ -45,9 +45,9 @@ test-suite hj-tests
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   hs-source-dirs: test, src
-  other-modules: HJ.Types, HJ.JSON, HJ.Project, HJ.Native, HJ.Script, HJ.Physics, HJ.Renderer, HJ.Renderer.GL, HJ.Renderer.Assets, HJ.Renderer.Camera
-  build-depends: base >=4.18 && <5, containers, directory, filepath, process, time, aeson, bytestring, text, OpenGLRaw >=3.3 && <3.4, linear >=1.23 && <1.24, vector
-  c-sources: native/hj.c, native/audio.c, native/assets.c
+  other-modules: RuntimeSpec, HJ.Types, HJ.JSON, HJ.Project, HJ.Native, HJ.Audio, HJ.Script, HJ.Script.API, HJ.Physics, HJ.Renderer, HJ.Renderer.GL, HJ.Renderer.Assets, HJ.Renderer.Camera
+  build-depends: base >=4.18 && <5, containers, directory, filepath, process, time, aeson, bytestring, text, OpenGLRaw >=3.3 && <3.4, linear >=1.23 && <1.24, vector, hslua-core >=2.3.2 && <2.4
+  c-sources: native/hj.c, native/audio.c, native/assets.c, native/lua.c
   cxx-sources: native/physics.cpp
   cxx-options: -std=c++17
   if os(darwin)
@@ -57,6 +57,6 @@ test-suite hj-tests
     frameworks: Cocoa
   else
     extra-libraries: stdc++
-  pkgconfig-depends: raylib >=5.5, lua >=5.4, bullet >=3
+  pkgconfig-depends: raylib >=5.5, bullet >=3
   default-language: Haskell2010
   ghc-options: -Wall -threaded -O2

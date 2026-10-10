@@ -2,3 +2,7 @@ packages: .
 -- OpenGLRaw's published bounds predate the GHC 9.14 boot libraries.
 -- Keep this exception local to these two bounds; renderer checks exercise it.
 allow-newer: OpenGLRaw:base, OpenGLRaw:containers
+
+-- Use HsLua's matching bundled Lua 5.4.8 and protected callback API.
+package lua
+  flags: -system-lua -allow-unsafe-gc
