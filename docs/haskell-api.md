@@ -144,3 +144,25 @@ the glTF skinned mesh node transform is ignored per specification. Renderer
 instance buffers borrow textures from an immutable source and release separately.
 Use primitive gameplay colliders for animated characters. See README for the
 bounded import format and unsupported animation features.
+
+## Finite terrain
+
+`terrains :: IntMap Terrain` stores centered XZ height grids. Heights are row
+major (`z * terrainWidth + x`), with local Y as the height. `generateTerrain`
+samples a Haskell height function; `spawnTerrain` attaches the mesh, material
+and static Bullet `Heightfield` body together:
+
+```haskell
+let patch = generateTerrain 65 65 0.625 (\x z -> 0.5 * sin (x * 0.3) * cos (z * 0.2))
+    (ground, nextWorld) = spawnTerrain "Rolling ground" patch emptyWorld
+    edited = nextWorld { terrains = IM.adjust (setHeight (32 * 65 + 32) 1) ground (terrains nextWorld) }
+```
+
+Import `Data.IntMap.Strict` qualified as `IM` for the update. `setHeight` returns
+the original grid for an invalid index or height. `validTerrain` checks the
+complete grid; `terrainMesh` returns validated CPU geometry. Renderer and physics
+replace owned resources when grid data changes. Static heightfields preserve
+entity origin under translation, rotation and scale; they cannot be dynamic or
+kinematic. JSON, clones and prefabs carry the samples inline, so exports need
+no separate heightmap asset. Texture paths use the existing Mesh/Material policy.
+See README for patch-size limits and the deliberately small inspector controls.

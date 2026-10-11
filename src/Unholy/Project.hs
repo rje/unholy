@@ -35,6 +35,7 @@ projectJSON p = Object
     int=Number . fromIntegral; num=Number . realToFrac; vec=Array . map num . vlist
     entity (e,n) = Object $ [("id",int e),("name",String n),("transform",trans (transforms w IM.! e))]
       ++ optional "mesh" (\m -> Object [("geometry",String (geometry m)),("texture",String (texture m)),("importMaterials",Boolean (useImportedMaterials m))]) (IM.lookup e (meshes w))
+      ++ optional "terrain" (\t -> Object [("width",int (terrainWidth t)),("depth",int (terrainDepth t)),("spacing",num (terrainSpacing t)),("heights",Array (map num (terrainHeights t)))]) (IM.lookup e (terrains w))
       ++ optional "animator" (\a -> Object [("clip",String (animationClip a)),("time",num (animationTime a)),("rate",num (animationRate a)),("loop",Boolean (animationLoop a)),("playing",Boolean (animationPlaying a))]) (IM.lookup e (animators w))
       ++ optional "material" mat (IM.lookup e (materials w))
       ++ optional "script" String (IM.lookup e (scripts w))
@@ -99,6 +100,7 @@ decodeProject input = do
       fields <- object j
       let optional k decode = traverse decode (lookup k fields)
       m <- optional "mesh" (\o -> Mesh <$> (field "geometry" o >>= string) <*> (field "texture" o >>= string) <*> maybe (Right False) boolean (lookup "importMaterials" =<< either (const Nothing) Just (object o)))
+      terrain <- optional "terrain" (\o -> Terrain <$> (field "width" o >>= integer) <*> (field "depth" o >>= integer) <*> floatField "spacing" o <*> (field "heights" o >>= array >>= mapM (number >=> finiteFloat)))
       animator <- optional "animator" (\o -> Animator <$> (field "clip" o >>= string) <*> floatField "time" o <*> floatField "rate" o <*> (field "loop" o >>= boolean) <*> (field "playing" o >>= boolean))
       mat <- optional "material" (\o -> Material <$> vfield "albedo" o <*> floatField "metallic" o <*> floatField "roughness" o <*> floatField "emission" o)
       script <- optional "script" string
@@ -126,7 +128,7 @@ decodeProject input = do
           <*> optionalField "angularDamping" (floatField "angularDamping" o) 0.08 o
           <*> optionalField "lockRotation" (field "lockRotation" o >>= boolean) False o)
       let put v table = maybe table (\x -> IM.insert e x table) v
-      pure w {names=IM.insert e n (names w),transforms=IM.insert e tr (transforms w),meshes=put m (meshes w),materials=put mat (materials w),scripts=put script (scripts w),lights=put light (lights w),bodies=put body (bodies w),parents=put parent (parents w),authored=put gameData (authored w),animators=put animator (animators w)}
+      pure w {names=IM.insert e n (names w),transforms=IM.insert e tr (transforms w),meshes=put m (meshes w),materials=put mat (materials w),scripts=put script (scripts w),lights=put light (lights w),bodies=put body (bodies w),parents=put parent (parents w),authored=put gameData (authored w),animators=put animator (animators w),terrains=put terrain (terrains w)}
 
 validateProject :: Project -> Either String ()
 validateProject p = do
@@ -146,7 +148,7 @@ assetPath p
   | otherwise = Right ()
 
 builtins :: [String]
-builtins = ["cube","sphere","plane","cylinder","torus","capsule"]
+builtins = ["cube","sphere","plane","cylinder","torus","capsule","terrain"]
 
 assetReferences :: World -> [FilePath]
 assetReferences w = nub (IM.elems (scripts w) ++ [geometry m | m<-IM.elems (meshes w), geometry m `notElem` builtins] ++ [texture m | m<-IM.elems (meshes w),not (null (texture m))])

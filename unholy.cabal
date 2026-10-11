@@ -10,7 +10,7 @@ data-files: assets/shaders/*.vs, assets/shaders/*.fs
 
 library
   hs-source-dirs: src
-  exposed-modules: Unholy, Unholy.Authoring, Unholy.Engine, Unholy.Types, Unholy.Transform, Unholy.ECS, Unholy.Game, Unholy.Input, Unholy.Project, Unholy.Prefab, Unholy.Physics, Unholy.Audio, Unholy.Application, Unholy.Native, Unholy.Gizmo, Unholy.JSON, Unholy.Script, Unholy.Renderer, Unholy.Renderer.GL, Unholy.Renderer.Assets, Unholy.Renderer.Camera, Unholy.Renderer.GLTF, Unholy.Renderer.IBL, Unholy.Asset.CPU, Unholy.Animation, Unholy.Renderer.Primitives
+  exposed-modules: Unholy, Unholy.Authoring, Unholy.Engine, Unholy.Types, Unholy.Transform, Unholy.ECS, Unholy.Game, Unholy.Input, Unholy.Project, Unholy.Prefab, Unholy.Physics, Unholy.Audio, Unholy.Application, Unholy.Native, Unholy.Gizmo, Unholy.JSON, Unholy.Script, Unholy.Renderer, Unholy.Renderer.GL, Unholy.Renderer.Assets, Unholy.Renderer.Camera, Unholy.Renderer.GLTF, Unholy.Renderer.IBL, Unholy.Asset.CPU, Unholy.Animation, Unholy.Terrain, Unholy.Renderer.Primitives
   other-modules: Unholy.Script.API, Unholy.Editor, Unholy.Theme, Unholy.Exception, Unholy.Resource, Paths_unholy
   autogen-modules: Paths_unholy
   build-depends: base >=4.18 && <5, containers, directory, filepath, process, time, aeson, bytestring, text, deepseq, OpenGLRaw >=3.3 && <3.4, linear >=1.23 && <1.24, vector, hslua-core >=2.3.2 && <2.4
@@ -57,7 +57,7 @@ test-suite unholy-tests
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   hs-source-dirs: test
-  other-modules: AnimationSpec, PhysicsSpec, RuntimeSpec, FeatureSpec, LibrarySpec, ReliabilitySpec, AuthoringSpec
+  other-modules: TerrainSpec, AnimationSpec, PhysicsSpec, RuntimeSpec, FeatureSpec, LibrarySpec, ReliabilitySpec, AuthoringSpec
   build-depends: base, unholy, containers, directory, filepath, vector, linear
   default-language: Haskell2010
   ghc-options: -Wall -threaded -O2

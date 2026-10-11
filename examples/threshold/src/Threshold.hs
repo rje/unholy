@@ -79,7 +79,9 @@ sampleProject=(emptyProject "Threshold") {haskellGame=Just "threshold",world=sce
   environment=defaultEnvironment {environmentMap="assets/studio.hdr",environmentIntensity=0.6,environmentRotation=25,sunShadows=True,sunPower=2,skyTop=V3 0.025 0.04 0.065,skyBottom=V3 0.06 0.11 0.13,fogDensity=0.008}}
   where
     mesh name shape pos size color body w=let (e,next)=spawnMesh name shape w in (e,next {transforms=IM.insert e (Transform pos (V3 0 0 0) size) (transforms next),materials=IM.insert e (Material color 0.35 0.38 0) (materials next),bodies=maybe (bodies next) (\b->IM.insert e b (bodies next)) body})
-    (_,base)=mesh "Basalt foundation" "cube" (V3 0 (-0.3) 0) (V3 12 0.6 28) (V3 0.13 0.19 0.2) (Just defaultBody) emptyWorld
+    terrain=generateTerrain 65 65 0.625 (\x z->let ridge=max 0 (min 1 ((abs x-3)/6)) in ridge*(1.7+1.2*sin (x*0.38)*cos (z*0.24))+if z>7 && abs x<3 then 0.08*sin ((z-7)*pi/7) else 0)
+    (ground,terrainWorld)=spawnTerrain "Mossy finite terrain" terrain emptyWorld
+    base=terrainWorld {meshes=IM.adjust (\m->m {texture="assets/ground.png"}) ground (meshes terrainWorld),materials=IM.insert ground (Material (V3 0.3 0.42 0.26) 0 0.88 0) (materials terrainWorld)}
     (player,a)=mesh "Traveler" "assets/traveler.gltf" (V3 0 1.05 11) (V3 1 1 1) (V3 0.95 0.55 0.16) (Just defaultBody {bodyShape=Capsule,mass=1,lockRotation=True,friction=0.25}) base
     (_,b)=mesh "Sloping causeway / triangle mesh" "assets/ramp.gltf" (V3 0 0 0) (V3 1 1 1) (V3 0.2 0.29 0.3) (Just defaultBody {bodyShape=TriangleMesh}) a
     (_,c)=mesh "Upper terrace" "cube" (V3 0 1 (-7)) (V3 6 2 14) (V3 0.19 0.28 0.29) (Just defaultBody) b

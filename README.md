@@ -87,7 +87,7 @@ during play. Restart play after modifying a Lua source file to reload it.
 | Marble Run / Aether Gardens | Follow the blue lights, jump the gap, reach the checkpoint, cross the sliding bridge to the gold arch; ride the left lift to the bonus balcony | Textured beveled decks and suspended gardens, sun shadows/fog, kinematic platforms and rotating sweeper, parented platform assemblies, trigger checkpoints/finish, collectible gem prefabs, runtime crate spawning/destruction, collision sounds and ambience, win/restart |
 | Pulse Courier | Roll through three orange relay cores and deliver to the green portal; E dashes | Independently packaged Haskell game, typed custom components and systems, trigger scoring, Haskell camera/audio, kinematic shuttles, all Haskell primitive geometry |
 | Circuit Breaker | Roll onto blue pads, press E to open linked doors, reach the green portal | Persistent typed Haskell configuration, Game inspector, remapped entity links, prefab assemblies, Bullet triggers and moving doors |
-| Threshold | Collect three beacons, push through a block, climb the causeway, jump the raised threshold and reach the cyan arch | Haskell capsule controller, upright lock, convex collision, CPU-only glTF triangle colliders, kinematic shuttle, default gamepad input, HDR lighting, completion/reset |
+| Threshold | Collect three beacons, push through a block, climb the causeway, jump the raised threshold and reach the cyan arch | Haskell animated traveler, finite textured terrain, capsule controller, convex/triangle/heightfield collision, kinematic shuttle, gamepad input, HDR lighting, completion/reset |
 | Knockdown | Ram all eight orange towers with the steel ball | Dynamic box/sphere collisions, rolling and toppling, Lua scoring, material changes, win/restart |
 
 All games use **WASD/arrows**, **Space** to jump/hop, and **R** to restart.
@@ -208,7 +208,7 @@ lifetime/policy, collision-event dispatch, prefabs, parent transforms, primitive
 geometry, input bindings, replay timing, text focus/edit buffers, clipping interaction
 and the editor theme. Window, renderer and audio ownership is explicit; Haskell
 uses no global engine singleton. Components
-are **Name, Transform, Parent, Mesh, Material, Script, Light and Body**, with an
+are **Name, Transform, Parent, Mesh, Material, Script, Light, Body, Animator and Terrain**, with an
 **Authored** store for registered game `Component a` fields. Systems join the
 tables they need. Small scalar FFI adapters call established native libraries:
 
@@ -229,8 +229,9 @@ tables they need. Small scalar FFI adapters call established native libraries:
 - [raygui](https://github.com/raysan5/raygui): editor widgets, with a charcoal and
   blue theme. A pinned header and its license live in `native/vendor/`.
 - [cgltf](https://github.com/jkuhlmann/cgltf): pinned CPU-only glTF/GLB
-  accessor decoding for mesh colliders, including source node world transforms.
-  Haskell retains arrays and makes collider/replacement decisions.
+  accessor decoding for mesh colliders and animation. Haskell retains arrays,
+  bakes collider node transforms, evaluates skeletal poses and makes resource
+  replacement decisions.
 - [HsLua](https://hackage.haskell.org/package/hslua-core): protected Haskell
   callbacks and bundled Lua 5.4.8 for per-entity script instances. Cabal builds
   this matching interpreter; a system Lua installation is unnecessary.
@@ -244,7 +245,7 @@ tables they need. Small scalar FFI adapters call established native libraries:
 `Unholy.Renderer` owns the render passes and per-window resource caches;
 `Unholy.Renderer.GL` owns shader compilation, uploads, framebuffer allocation and
 the shared UI context boundary; `Unholy.Renderer.Primitives` generates CPU geometry
-for cube/sphere/plane/cylinder/torus and uploads it directly, without a native model.
+for cube/sphere/plane/cylinder/torus/capsule and uploads it directly, without a native model.
 `Unholy.Renderer.Assets` copies file importer data into Haskell-owned arrays; `Unholy.Renderer.Camera` owns camera/picking math. The renderer
 runs on the window's bound OS thread and explicitly releases resources there.
 It flushes pending UI batches and restores OpenGL state around its passes.
@@ -325,10 +326,21 @@ support translation, rotation and positive scale. Mixed rigid/skinned primitives
 extra attributes (including tangents), morphs, cubic tracks, animation blending,
 root motion and GPU skinning are unsupported. CPU skinning targets modest rigs;
 this checkpoint makes no crowd-performance claim. Static imports retain their
-existing material policy. Finite terrain is the remaining implementation slice.
+existing material policy.
 
- Physics reuses Bullet box/sphere/capsule, convex
-hull and static triangle-mesh shapes. A capsule has radius 0.5 and total height 2
+Finite terrain uses a persisted `Terrain` height grid and a Haskell-generated
+mesh with normals, repeating UVs, bounds and triangle picking. Bullet's static
+heightfield uses the same cell diagonal; transformed/scaled samples agree with
+the rendered surface. Add Terrain creates a complete patch and collider. The
+inspector offers Flat/Hills presets, cell spacing and center-sample height;
+Haskell systems can generate or edit every sample. Undo, duplicate, prefabs,
+save/reopen and export preserve the grid. Threshold's starting route crosses
+textured terrain. Each axis has 2–129 samples, spacing is 0.01–100 and finite
+heights are limited to ±10,000. These are individual patches, without chunk
+streaming, LOD, sculpting brushes or blended material layers.
+
+Physics reuses Bullet box/sphere/capsule, convex
+hull, static triangle-mesh and static heightfield shapes. A capsule has radius 0.5 and total height 2
 before uniform entity scaling; its editor primitive/outline matches. Convex and
 triangle colliders derive from the entity's mesh (built-ins or unskinned core
 glTF/GLB triangles), including node transforms. Triangle colliders must be fixed
@@ -358,11 +370,13 @@ The next targets follow these limits and the measured baseline:
 3. Collider/input support now has a playable checkpoint in Threshold: Bullet
    capsule/convex/static triangle shapes and native controller snapshots, with
    Haskell authoring, input policy and transactional resource lifetime.
-4. Skeletal animation now has a playable Threshold checkpoint. Add finite terrain
-   against the same route, with rendering/collision agreement and editor export.
+4. Skeletal animation and finite terrain now share a playable Threshold checkpoint,
+   with pose/bounds/shadow consistency, terrain rendering/collision agreement
+   and actual editor authoring/export checks.
 
-Items 1–3 and animation now have working checkpoints; terrain
-remains the next implementation slice. Measurements and clean
+All four targets have working checkpoints within the limits above. Animation
+blending/GPU skinning, terrain brushes/LOD/streaming, richer asset import and
+broader desktop platform qualification remain future work. Measurements and clean
 public-package qualification are in [the current verification report](docs/haskell-verification.md).
 
 ## Verification tools
@@ -406,6 +420,10 @@ movement and a window resize, captures screenshots and closes the window.
 the real app through a gizmo drag and one undo/redo, saves a prefab, places its
 assembly, saves the project, and checks the resulting scene files. Its captures
 go to `build/verification/unholy-runtime/`.
+`scripts/verify-animation.py`, `scripts/verify-terrain.py` and
+`scripts/verify-threshold.py` exercise pose/terrain authoring and the playable
+route in the real editor and relocated exported player. Their captures live
+under `build/verification/animation/`, `terrain/` and `threshold/`.
 `test/marble-runtime-smoke.rae` plays Marble Run, rolls, jumps, spawns crates
 and restarts; use `--frames 270` for a bounded check.
 `test/knockdown-smoke.rae` starts Play with F5 and rolls into the targets; run it

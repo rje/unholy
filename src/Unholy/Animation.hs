@@ -216,17 +216,19 @@ posedMeshes rig a=map deform (rigMeshes rig)
   where
     globals=sampleGlobals rig a
     palettes=V.map (\s->V.fromList (zipWith (\joint bind->globals V.! joint !*! bind) (skinJoints s) (inverseBinds s))) (rigSkins rig)
+    normalPalettes=V.map (V.map (transpose . inv44)) palettes
     deform mesh=VS.concatMap vertexData (VS.generate (VS.length (bindVertices mesh) `div` 8) id)
       where
         vertexData vertex=
          let
             palette=palettes V.! meshSkin mesh
+            normals=normalPalettes V.! meshSkin mesh
             js=vertexJoints mesh VS.! vertex;ws=vertexWeights mesh VS.! vertex
             skin=foldl (^+^) (pure (pure 0)) (zipWith (\joint weight->fmap (fmap (*weight)) (palette V.! joint)) (toList4 js) (toList4 ws))
             pos=v3At (bindVertices mesh) (vertex*8)
             normal=v3At (bindVertices mesh) (vertex*8+5)
             point=skin !* point4 pos 1
-            direction=normalize (foldl (^+^) (pure 0) (zipWith (\joint weight->weight *^ xyz (transpose (inv44 (palette V.! joint)) !* point4 normal 0)) (toList4 js) (toList4 ws)))
+            direction=normalize (foldl (^+^) (pure 0) (zipWith (\joint weight->weight *^ xyz (normals V.! joint !* point4 normal 0)) (toList4 js) (toList4 ws)))
          in VS.fromList (toList3 (xyz point)++[bindVertices mesh VS.! (vertex*8+3),bindVertices mesh VS.! (vertex*8+4)]++toList3 direction)
     point4 (V3 x y z) w=V4 x y z w
     xyz (V4 x y z _)=V3 x y z

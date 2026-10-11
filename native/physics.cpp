@@ -1,5 +1,9 @@
 #include <btBulletDynamicsCommon.h>
+#include <BulletCollision/CollisionShapes/btHeightfieldTerrainShape.h>
 #include <memory>
+#include <vector>
+#include <algorithm>
+#include <cmath>
 
 // Bullet ABI only: Haskell owns body handles, settings and gameplay decisions.
 struct World {
@@ -13,6 +17,8 @@ static btTransform pose(const float *d) {
     return btTransform(btQuaternion(d[3],d[4],d[5],d[6]),btVector3(d[0],d[1],d[2]));
 }
 struct OwnedBody {
+    std::vector<float> heights;
+    std::unique_ptr<btCollisionShape> heightfield;
     std::unique_ptr<btTriangleMesh> triangles;
     std::unique_ptr<btCollisionShape> shape;
     std::unique_ptr<btDefaultMotionState> motion;
@@ -42,6 +48,18 @@ void *hj_body_new(void *p,int id,int kind,int flags,float mass,float bounce,floa
                 owned->triangles->addTriangle(btVector3(v[0],v[1],v[2]),btVector3(v[3],v[4],v[5]),btVector3(v[6],v[7],v[8]));
             }
             owned->shape=std::make_unique<btBvhTriangleMeshShape>(owned->triangles.get(),true);
+        } else if(kind==5) {
+            const int width=(int)d[18],depth=(int)d[19];const float spacing=d[20];
+            if(!vertices || width<2 || width>129 || depth<2 || depth>129 || count!=width*depth || mass!=0 || (flags&2) || !std::isfinite(spacing) || spacing<=0) return nullptr;
+            owned->heights.assign(vertices,vertices+count);
+            for(float h:owned->heights) if(!std::isfinite(h)) return nullptr;
+            auto range=std::minmax_element(owned->heights.begin(),owned->heights.end());
+            const float center=(*range.first+*range.second)/2;
+            const float low=*range.first-0.001f,high=*range.second+0.001f;
+            auto field=std::make_unique<btHeightfieldTerrainShape>(width,depth,owned->heights.data(),low,high,1,true);
+            field->setLocalScaling(btVector3(spacing,1,spacing));field->setMargin(0);
+            auto compound=std::make_unique<btCompoundShape>();btTransform offset;offset.setIdentity();offset.setOrigin(btVector3(0,center,0));
+            compound->addChildShape(offset,field.get());owned->heightfield=std::move(field);owned->shape=std::move(compound);
         } else return nullptr;
         auto shape=owned->shape.get();shape->setLocalScaling(btVector3(d[7],d[8],d[9]));
         btVector3 inertia(0,0,0);if(mass>0) shape->calculateLocalInertia(mass,inertia);

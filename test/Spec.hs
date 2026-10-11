@@ -1,5 +1,6 @@
 module Main where
 
+import TerrainSpec
 import AnimationSpec
 import PhysicsSpec
 import LibrarySpec
@@ -31,6 +32,7 @@ load name = loadProject ("projects" </> name </> projectFile) >>= either (ioErro
 
 main :: IO ()
 main = do
+  test "Finite terrain geometry/collision, midpoint, editing, persistence and traversal" terrainContracts
   test "Haskell skin hierarchy, blend weights, clips, playback and persistence" animationContracts
   test "Persistent typed authoring fields, reference remapping and unknown data" authoredReferences
   test "Game-owned resource acquisition and once-only LIFO cleanup" ownedResources

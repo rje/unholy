@@ -18,7 +18,7 @@ import Foreign.C
 import Data.IORef
 import Control.Monad (forM_, forM, unless, when)
 
-data NativeBody = NativeBody { bodyHandle :: Ptr (), lastTransform :: Transform, lastBody :: Body, lastGeometry :: Maybe FilePath }
+data NativeBody = NativeBody { bodyHandle :: Ptr (), lastTransform :: Transform, lastBody :: Body, lastGeometry :: Maybe FilePath, lastTerrain :: Maybe Terrain }
 data Contact = Contact { contactA :: Entity, contactB :: Entity, contactNormal :: V3, contactPoint :: V3, contactDistance :: Float, contactImpulse :: Float } deriving (Eq,Show)
 data CollisionEvent = CollisionEvent { collisionKind :: String, collisionContact :: Contact, collisionTrigger :: Bool } deriving (Eq,Show)
 data RayHit = RayHit { hitEntity :: Entity, hitPoint :: V3, hitNormal :: V3, hitFraction :: Float } deriving (Eq,Show)
@@ -87,7 +87,8 @@ synchronize p w = mask $ \restore->do
   resets<-readIORef (teleports p)
   let desired=IM.intersection (bodies w) (transforms w)
       geometryFor e b=if bodyShape b `elem` [Convex,TriangleMesh] then geometry <$> IM.lookup e (meshes w) else Nothing
-      compatible e b native=configuration (lastBody native)==configuration b && lastGeometry native==geometryFor e b
+      terrainFor e b=if bodyShape b==Heightfield then IM.lookup e (terrains w) else Nothing
+      compatible e b native=configuration (lastBody native)==configuration b && lastGeometry native==geometryFor e b && lastTerrain native==terrainFor e b
       replacements=IM.filterWithKey (\e b->maybe True (not . compatible e b) (IM.lookup e old)) desired
       removed=IM.filterWithKey (\e _->not (IM.member e desired) || IM.member e replacements) old
   acquired<-newIORef IM.empty
@@ -114,16 +115,20 @@ synchronize p w = mask $ \restore->do
     ptr=nativeWorld p
     configuration b=b {velocity=V3 0 0 0,grounded=False}
     createBody restore e b asset=do
-      points<-case asset of
-        Nothing->pure VS.empty
-        Just path->restore (loadTriangles (if path `elem` ["cube","sphere","plane","cylinder","torus","capsule"] then path else assetRoot p </> path))
+      let terrain=if bodyShape b==Heightfield then IM.lookup e (terrains w) else Nothing
+      points<-case terrain of
+        Just value->pure (VS.fromList (terrainHeights value))
+        Nothing->case asset of
+          Nothing->pure VS.empty
+          Just path->VS.unsafeCast <$> restore (loadTriangles (if path `elem` ["cube","sphere","plane","cylinder","torus","capsule"] then path else assetRoot p </> path))
       let t=transforms w IM.! e
           flags=(if kinematic b then 2 else if mass b==0 then 1 else 0)+(if trigger b then 4 else 0)
           ccd=if mass b>0 then [0.25,0.2*minimum (vlist (scale t))] else [0,0]
-          data'=poseData t++vlist (colliderScale t b)++vlist (velocity b)++[linearDamping b,angularDamping b]++ccd++[if lockRotation b then 1 else 0]
-      h<-floats data' $ \d->VS.unsafeWith points $ \vertices->cAdd ptr (fromIntegral e) (fromIntegral (fromEnum (bodyShape b))) flags (realToFrac (mass b)) (realToFrac (restitution b)) (realToFrac (friction b)) d (castPtr vertices) (fromIntegral (VS.length points))
+          data'=poseData t++vlist (colliderScale t b)++vlist (velocity b)++[linearDamping b,angularDamping b]++ccd++[if lockRotation b then 1 else 0]++maybe [0,0,0] (\v->[fromIntegral (terrainWidth v),fromIntegral (terrainDepth v),terrainSpacing v]) terrain
+          count=if bodyShape b==Heightfield then VS.length points else VS.length points `div` 3
+      h<-floats data' $ \d->VS.unsafeWith points $ \vertices->cAdd ptr (fromIntegral e) (fromIntegral (fromEnum (bodyShape b))) flags (realToFrac (mass b)) (realToFrac (restitution b)) (realToFrac (friction b)) d vertices (fromIntegral count)
       when (h==nullPtr) (ioError (userError ("Cannot create Bullet collider for entity "++show e)))
-      pure (NativeBody h t b asset)
+      pure (NativeBody h t b asset terrain)
 stepPhysics :: Physics -> Float -> World -> IO World
 stepPhysics p dt input = do
   let w=resolveWorld input

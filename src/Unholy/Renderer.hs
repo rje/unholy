@@ -12,6 +12,8 @@ import Unholy.Renderer.Assets
 import qualified Unholy.Renderer.GLTF as F
 import qualified Unholy.Renderer.IBL as IBL
 import qualified Unholy.Animation as Animation
+import qualified Unholy.Terrain as Terrain
+import qualified Unholy.Renderer.Primitives as Primitive
 import Graphics.GL
 import qualified Linear as L
 import qualified Data.Map.Strict as M
@@ -38,6 +40,7 @@ data Renderer = Renderer
   , environmentCache :: !(IORef (Maybe (FilePath,Maybe IBL.IBL)))
   , animationSources :: !(IORef (M.Map FilePath (Maybe (Animation.Rig,ModelData))))
   , animatedInstances :: !(IORef (IM.IntMap (FilePath,Animator,ModelData)))
+  , terrainInstances :: !(IORef (IM.IntMap (Terrain,ModelData)))
   , disposed :: !(IORef Bool)
   }
 data Draw = Draw { drawEntity :: !Entity, drawModel :: !ModelData, drawMatrix :: !(L.M44 Float), drawMaterial :: !Material, drawTexture :: !GLuint, drawImported :: !Bool }
@@ -80,6 +83,7 @@ initialize root = preservingState $ \_ ->
     environmentCache<-newIORef Nothing
     animationSources<-newIORef M.empty
     animatedInstances<-newIORef IM.empty
+    terrainInstances<-newIORef IM.empty
     disposed<-newIORef False
     checkGL "Haskell renderer initialization"
     putStrLn "Renderer: Haskell / OpenGL 3.3 (direct GPU submission)"
@@ -120,6 +124,8 @@ unloadAssets Renderer{..} = do
   textures<-atomicModifyIORef' textureCache (\m -> (M.empty,m))
   instances<-atomicModifyIORef' animatedInstances (\m->(IM.empty,m))
   sources<-atomicModifyIORef' animationSources (\m->(M.empty,m))
+  ground<-atomicModifyIORef' terrainInstances (\m->(IM.empty,m))
+  mapM_ (deleteModel . snd) (IM.elems ground)
   mapM_ (\(_,_,m)->deleteAnimated m) (IM.elems instances)
   mapM_ (mapM_ (deleteModel . snd)) (M.elems sources)
   priorEnvironment<-atomicModifyIORef' environmentCache (\value->(Nothing,value))
@@ -167,6 +173,21 @@ getModelFor r importedPolicy path = do
 -- owns those textures; removing a character deletes its mutable buffers alone.
 deleteAnimated :: ModelData -> IO ()
 deleteAnimated=mapM_ (deleteBuffer . meshBuffer) . modelMeshes
+getTerrainModel :: Renderer -> Entity -> Terrain -> IO ModelData
+getTerrainModel r e terrain=do
+  old<-IM.lookup e <$> readIORef (terrainInstances r)
+  case old of
+    Just (prior,model) | prior==terrain->pure model
+    _->do
+      cpu<-either (ioError . userError) pure (Terrain.terrainMesh terrain)
+      let raw=Primitive.vertices cpu
+          positions=VS.generate (VS.length raw `div` 8) (\i->L.V3 (raw VS.! (i*8)) (raw VS.! (i*8+1)) (raw VS.! (i*8+2)))
+          bounds=boundsOf positions
+      buffer<-uploadBuffer raw (Primitive.indices cpu)
+      let model=ModelData [MeshData buffer positions (Primitive.indices cpu) bounds Nothing] L.identity bounds Nothing
+      mapM_ (deleteModel . snd) old
+      modifyIORef' (terrainInstances r) (IM.insert e (terrain,model))
+      pure model
 getAnimatedModel :: Renderer -> Entity -> FilePath -> Animator -> IO ModelData
 getAnimatedModel r e path a=do
   sources<-readIORef (animationSources r)
@@ -291,9 +312,13 @@ drawScene r mouse down snapping root project rect@(x,y,w,h) (screenW,screenH) ed
     priorPoses<-readIORef (poseCache r)
     unused<-atomicModifyIORef' (animatedInstances r) (\instances->let (live,dead)=IM.partitionWithKey (\e _->IM.member e (animators displayed) && IM.member e (meshes displayed)) instances in (live,dead))
     mapM_ (\(_,_,m)->deleteAnimated m) (IM.elems unused)
+    removedTerrain<-atomicModifyIORef' (terrainInstances r) (\instances->let (live,dead)=IM.partitionWithKey (\e _->IM.member e (terrains displayed) && IM.member e (meshes displayed)) instances in (live,dead))
+    mapM_ (deleteModel . snd) (IM.elems removedTerrain)
     prepared<-forM (renderables displayed) $ \(e,t,m,mat) -> do
       let path=if geometry m `elem` builtins then geometry m else root </> geometry m
-      model<-case IM.lookup e (animators displayed) of Nothing->getModelFor r (useImportedMaterials m) path;Just a->getAnimatedModel r e path a
+      model<-case IM.lookup e (terrains displayed) of
+        Just terrain->getTerrainModel r e terrain
+        Nothing->case IM.lookup e (animators displayed) of Nothing->getModelFor r (useImportedMaterials m) path;Just a->getAnimatedModel r e path a
       tex<-getTexture r (if null (texture m) then "" else root </> texture m)
       let pose=case IM.lookup e priorPoses of
             Just cached | IM.notMember e (animators displayed) && cachedGeometry cached==path && cachedModel cached==vertexArray (meshBuffer (head (modelMeshes model))) && cachedTransform cached==t -> cached

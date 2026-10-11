@@ -14,15 +14,19 @@ data Light = Light { lightColor :: !V3, intensity :: !Float } deriving (Eq, Show
 data Animator = Animator { animationClip :: String, animationTime :: !Float, animationRate :: !Float, animationLoop :: !Bool, animationPlaying :: !Bool } deriving (Eq,Show,Read)
 defaultAnimator :: Animator
 defaultAnimator=Animator "" 0 1 True True
+-- Finite centered X/Z grid, row-major (z*width+x), heights in local Y units.
+data Terrain = Terrain { terrainWidth :: !Int, terrainDepth :: !Int, terrainSpacing :: !Float, terrainHeights :: ![Float] } deriving (Eq,Show,Read)
+validTerrain :: Terrain -> Bool
+validTerrain t=terrainWidth t>=2 && terrainDepth t>=2 && terrainWidth t<=129 && terrainDepth t<=129 && finite (terrainSpacing t) && terrainSpacing t>=0.01 && terrainSpacing t<=100 && length (terrainHeights t)==terrainWidth t*terrainDepth t && all (\h->finite h && abs h<=10000) (terrainHeights t)
 -- Persistent game-owned configuration. References are explicit so cloning and
 -- prefab instantiation can remap them without reflecting over Haskell values.
 data FieldValue = FloatValue !Float | TextValue String | BoolValue !Bool | EntityValue !(Maybe Entity)
   deriving (Eq,Show,Read)
 type Fields = M.Map String FieldValue
 type Authored = M.Map String Fields
-data BodyShape = Box | Sphere | Capsule | Convex | TriangleMesh deriving (Enum,Bounded,Eq,Show,Read)
+data BodyShape = Box | Sphere | Capsule | Convex | TriangleMesh | Heightfield deriving (Enum,Bounded,Eq,Show,Read)
 shapeName :: BodyShape -> String
-shapeName shape=case shape of Box->"box";Sphere->"sphere";Capsule->"capsule";Convex->"convex";TriangleMesh->"triangle-mesh"
+shapeName shape=case shape of Box->"box";Sphere->"sphere";Capsule->"capsule";Convex->"convex";TriangleMesh->"triangle-mesh";Heightfield->"heightfield"
 
 data Body = Body { bodyShape :: !BodyShape, mass :: !Float, velocity :: !V3, restitution :: !Float, friction :: !Float, grounded :: !Bool, kinematic :: !Bool, trigger :: !Bool, linearDamping :: !Float, angularDamping :: !Float, lockRotation :: !Bool }
   deriving (Eq,Show,Read)
@@ -50,6 +54,7 @@ data World = World
   , bodies :: !(IM.IntMap Body)
   , authored :: !(IM.IntMap Authored)
   , animators :: !(IM.IntMap Animator)
+  , terrains :: !(IM.IntMap Terrain)
   } deriving (Eq, Show, Read)
 
 data Project = Project { projectName :: String, world :: !World, camera :: !Camera, environment :: !Environment, physicsSettings :: !PhysicsSettings, haskellGame :: Maybe String }
@@ -64,7 +69,7 @@ defaultCamera = Camera (V3 10 7 11) (V3 0 1 0) 45
 defaultEnvironment :: Environment
 defaultEnvironment = Environment (V3 (-0.5) (-1) (-0.4)) (V3 1 0.92 0.82) 3 0.12 1 (V3 0.067 0.098 0.145) (V3 0.125 0.173 0.208) 0 False "" 1 0
 emptyWorld :: World
-emptyWorld = World 1 IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty
+emptyWorld = World 1 IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty
 emptyProject :: String -> Project
 emptyProject n = Project n emptyWorld defaultCamera defaultEnvironment defaultPhysicsSettings Nothing
 
@@ -78,7 +83,7 @@ spawnMesh n g w = (e, w' { meshes = IM.insert e (Mesh g "" False) (meshes w'), m
 
 destroy :: Entity -> World -> World
 destroy e w = foldr remove w (descendants e w)
-  where remove id' current = current { names = IM.delete id' (names current), transforms = IM.delete id' (transforms current), meshes = IM.delete id' (meshes current), materials = IM.delete id' (materials current), scripts = IM.delete id' (scripts current), lights = IM.delete id' (lights current), bodies = IM.delete id' (bodies current), parents=IM.delete id' (parents current),animators=IM.delete id' (animators current),authored=IM.map (mapReferences (\targetId->if targetId==id' then Nothing else Just targetId)) (IM.delete id' (authored current)) }
+  where remove id' current = current { names = IM.delete id' (names current), transforms = IM.delete id' (transforms current), meshes = IM.delete id' (meshes current), materials = IM.delete id' (materials current), scripts = IM.delete id' (scripts current), lights = IM.delete id' (lights current), bodies = IM.delete id' (bodies current), parents=IM.delete id' (parents current),animators=IM.delete id' (animators current),terrains=IM.delete id' (terrains current),authored=IM.map (mapReferences (\targetId->if targetId==id' then Nothing else Just targetId)) (IM.delete id' (authored current)) }
 
 mapReferences :: (Entity -> Maybe Entity) -> Authored -> Authored
 mapReferences remap=M.map (M.map (\value->case value of EntityValue ref->EntityValue (ref >>= remap);_->value))
@@ -96,7 +101,7 @@ duplicate e w = (idOf e,w')
     copy field=IM.union (IM.fromList [(idOf id',v) | id'<-ids,Just v<-[IM.lookup id' (field w)]]) (field w)
     childParents=IM.fromList [(idOf id',p {parentEntity=idOf (parentEntity p)}) | id'<-ids,id'/=e,Just p<-[IM.lookup id' (parents w)]]
     w'=w {nextId=nextId w+length ids,names=IM.adjust (++" copy") (idOf e) (copy names),transforms=copy transforms,meshes=copy meshes
-      ,materials=copy materials,scripts=copy scripts,lights=copy lights,bodies=copy bodies,animators=copy animators,parents=IM.union childParents (parents w)
+      ,materials=copy materials,scripts=copy scripts,lights=copy lights,bodies=copy bodies,animators=copy animators,terrains=copy terrains,parents=IM.union childParents (parents w)
       ,authored=IM.union (IM.fromList [(idOf id',mapReferences (\targetId->Just (IM.findWithDefault targetId targetId remap)) value) | id'<-ids,Just value<-[IM.lookup id' (authored w)]]) (authored w)}
 
 renderables :: World -> [(Entity, Transform, Mesh, Material)]
@@ -115,6 +120,7 @@ validateWorld w
   | IM.size (lights w) > 8 = Left "This renderer supports at most eight point lights"
   | any (\l -> not (validV (lightColor l)) || not (finite (intensity l)) || intensity l < 0) (IM.elems (lights w)) = Left "Invalid point light"
   | any badBody (IM.elems (bodies w)) = Left "Invalid rigid body"
+  | any (\(e,t)->not (validTerrain t) || maybe True ((/="terrain").geometry) (IM.lookup e (meshes w)) || IM.member e (animators w)) (IM.toList (terrains w)) || any (\(e,m)->geometry m=="terrain" && IM.notMember e (terrains w)) (IM.toList (meshes w)) = Left "Terrain requires a valid 2..129 grid and a terrain mesh without Animator"
   | any (\(e,a)->IM.notMember e (meshes w) || not (all finite [animationTime a,animationRate a]) || animationTime a<0 || animationRate a<0 || animationRate a>10) (IM.toList (animators w)) = Left "Animators require a mesh, finite nonnegative time and rate 0..10"
   | any badCollider (IM.toList (bodies w)) = Left "Capsules require uniform scale; mesh colliders require a mesh; triangle colliders must be static"
   | any badAuthored (IM.elems (authored w)) = Left "Invalid authored component field or entity reference"
@@ -123,7 +129,7 @@ validateWorld w
     ids = IM.keys (names w)
     -- Duplicates do not affect membership checks. Avoid quadratic list nub on
     -- this path, which runs at every Haskell system boundary.
-    componentIds = concat [IM.keys (transforms w),IM.keys (meshes w),IM.keys (materials w),IM.keys (scripts w),IM.keys (lights w),IM.keys (bodies w),IM.keys (parents w),IM.keys (authored w),IM.keys (animators w)]
+    componentIds = concat [IM.keys (transforms w),IM.keys (meshes w),IM.keys (materials w),IM.keys (scripts w),IM.keys (lights w),IM.keys (bodies w),IM.keys (parents w),IM.keys (authored w),IM.keys (animators w),IM.keys (terrains w)]
     badAuthored values=any null (M.keys values) || any (\fields->any null (M.keys fields) || any badField (M.elems fields)) (M.elems values)
     badField (FloatValue n)=not (finite n)
     badField (EntityValue (Just e))=IM.notMember e (names w)
@@ -138,6 +144,8 @@ validateWorld w
       in (bodyShape b==Capsule && (abs (x-y)>0.0001 || abs (x-z)>0.0001))
         || (bodyShape b `elem` [Convex,TriangleMesh] && not (IM.member e (meshes w)))
         || (bodyShape b==TriangleMesh && (mass b/=0 || kinematic b))
+        || (bodyShape b==Heightfield && (mass b/=0 || kinematic b || IM.notMember e (terrains w)))
+        || (IM.member e (terrains w) && bodyShape b/=Heightfield)
     badBody b = not (validV (velocity b) && all finite [mass b,restitution b,friction b,linearDamping b,angularDamping b]) || mass b<0 || restitution b<0 || restitution b>1 || friction b<0 || (kinematic b && mass b/=0) || (trigger b && mass b/=0) || linearDamping b<0 || linearDamping b>1 || angularDamping b<0 || angularDamping b>1
 
 finite :: Float -> Bool

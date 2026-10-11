@@ -47,7 +47,7 @@ run(APP, '--build', SCENE, log='build.log')
 export = ROOT/'projects/threshold/dist/threshold'
 exported = json.loads((export/'project.hj.json').read_text())
 assert exported == json.loads(SCENE.read_text()), 'Export changed the scene'
-for asset in ['traveler.gltf', 'traveler.bin', 'ramp.gltf', 'ramp.bin', 'studio.hdr', 'audio/jump.wav', 'audio/pickup.wav']:
+for asset in ['traveler.gltf', 'traveler.bin', 'ground.png', 'ramp.gltf', 'ramp.bin', 'studio.hdr', 'audio/jump.wav', 'audio/pickup.wav']:
     assert (export/'assets'/asset).is_file(), 'Export omitted '+asset
 run(export/'unholy-player', '--play', export/'project.hj.json', '--replay', pad, '--frames', 650, '--capture', OUT/'controller-export.png', cwd='/tmp', log='controller-export.log')
 print('PASS real editor/player replays, unchanged authored scene and relocated export; inspect captures for completed/reset HUDs')

@@ -1,5 +1,6 @@
 module Unholy.Editor (runEditor, runPlayer) where
 
+import qualified Unholy.Terrain as Terrain
 import Unholy.Types
 import Unholy.Transform (setTransform,relative)
 import Unholy.Prefab
@@ -247,7 +248,7 @@ drawHierarchy window h s = do
 drawInspector :: N.Window -> Float -> Float -> Editor -> IO Editor
 drawInspector window w h s = do
   wheel<-N.wheel window (w-322) 118 322 (h-146)
-  let maxScroll=if tab s==WorldTab then 820 else 1660
+  let maxScroll=if tab s==WorldTab then 820 else 1960
       scroll=max 0 (min maxScroll (inspectorScroll s-wheel*40))
       x=w-305; y=132-scroll
   N.clip window (w-322) 120 322 (h-149)
@@ -378,7 +379,7 @@ entityInspector window x y s = case selected s of
         metal<-N.slider window x (y+543) 287 "Metallic" (metallic m) 0 1
         rough<-N.slider window x (y+591) 287 "Roughness" (roughness m) 0.04 1
         emit<-N.slider window x (y+639) 287 "Emission" (emission m) 0 8
-        pure $ if remove then w0 {meshes=IM.delete e (meshes w0),animators=IM.delete e (animators w0),materials=IM.delete e (materials w0)} else w0
+        pure $ if remove then w0 {meshes=IM.delete e (meshes w0),animators=IM.delete e (animators w0),terrains=IM.delete e (terrains w0),bodies=IM.update (\b->if bodyShape b==Heightfield then Nothing else Just b) e (bodies w0),materials=IM.delete e (materials w0)} else w0
           {meshes=IM.insert e (Mesh geometry' tex (if policy then not (useImportedMaterials mesh) else useImportedMaterials mesh)) (meshes w0),materials=IM.insert e (Material (fromListV (map (max 0 . min 1) (vlist color))) metal rough emit) (materials w0)}
     N.text window x (y+704) 13 "LUA SCRIPT" 2
     let script=IM.findWithDefault "" e (scripts w1)
@@ -391,7 +392,7 @@ entityInspector window x y s = case selected s of
     w3<-case IM.lookup e (bodies w2) of
       Nothing->do
         addBody<-N.button window x (y+850) 287 31 "Add box collider / static body" 0
-        pure (if addBody then w2 {bodies=IM.insert e defaultBody (bodies w2)} else w2)
+        pure (if addBody then w2 {bodies=IM.insert e defaultBody {bodyShape=if IM.member e (terrains w2) then Heightfield else Box} (bodies w2)} else w2)
       Just body->do
         shape<-N.button window x (y+850) 139 30 ("Shape: "++shapeName (bodyShape body)) 0
         remove<-N.button window (x+147) (y+850) 140 30 "Remove body" 2
@@ -405,12 +406,12 @@ entityInspector window x y s = case selected s of
         angular<-N.slider window x (y+1145) 287 "Angular damping" (angularDamping body) 0 1
         upright<-N.button window x (y+1180) 287 23 (if lockRotation body then "Rotation: locked / upright" else "Rotation: free") 0
         let choices=drop 1 (dropWhile (/=bodyShape body) (cycle [minBound..maxBound]))
-            allowed candidate=let trial=body {bodyShape=candidate,mass=if candidate==TriangleMesh then 0 else mass body,kinematic=if candidate==TriangleMesh then False else kinematic body}
+            allowed candidate=let trial=body {bodyShape=candidate,mass=if candidate `elem` [TriangleMesh,Heightfield] then 0 else mass body,kinematic=if candidate `elem` [TriangleMesh,Heightfield] then False else kinematic body}
                               in validateWorld w2 {bodies=IM.insert e trial (bodies w2)}==Right ()
-            nextShape=if shape then case filter allowed (take 5 choices) of value:_->value;_->bodyShape body else bodyShape body
+            nextShape=if shape then case filter allowed (take 6 choices) of value:_->value;_->bodyShape body else bodyShape body
             sensing=if sensor then not (trigger body) else trigger body
-            kin=nextShape/=TriangleMesh && (if motion then not (kinematic body) else kinematic body)
-        pure $ if remove then w2 {bodies=IM.delete e (bodies w2)} else w2 {bodies=IM.insert e (body {bodyShape=nextShape,lockRotation=if upright then not (lockRotation body) else lockRotation body,mass=if nextShape==TriangleMesh || kin || sensing || IM.member e (parents w2) then 0 else max 0 (maybe (mass body) id (readFloat massText)),friction=friction',restitution=bounce,kinematic=kin,trigger=sensing,linearDamping=damping,angularDamping=angular}) (bodies w2)}
+            kin=nextShape `notElem` [TriangleMesh,Heightfield] && (if motion then not (kinematic body) else kinematic body)
+        pure $ if remove then w2 {bodies=IM.delete e (bodies w2)} else w2 {bodies=IM.insert e (body {bodyShape=nextShape,lockRotation=if upright then not (lockRotation body) else lockRotation body,mass=if nextShape `elem` [TriangleMesh,Heightfield] || kin || sensing || IM.member e (parents w2) then 0 else max 0 (maybe (mass body) id (readFloat massText)),friction=friction',restitution=bounce,kinematic=kin,trigger=sensing,linearDamping=damping,angularDamping=angular}) (bodies w2)}
     N.text window x (y+1205) 13 "POINT LIGHT" 2
     w4<-case IM.lookup e (lights w3) of
       Nothing->do
@@ -436,18 +437,38 @@ entityInspector window x y s = case selected s of
         remove<-N.button window x (y+1675) 287 30 "Remove Animator" 2
         let next=a {animationClip=clip,animationTime=max 0 (maybe (animationTime a) id (readFloat phase)),animationRate=max 0 (min 10 (maybe (animationRate a) id (readFloat rate))),animationLoop=if loop then not (animationLoop a) else animationLoop a,animationPlaying=if play then not (animationPlaying a) else animationPlaying a}
         pure w4 {animators=if remove then IM.delete e (animators w4) else IM.insert e next (animators w4)}
+    N.text window x (y+1750) 13 "FINITE TERRAIN" 2
+    w6<-case IM.lookup e (terrains w5) of
+      Nothing->do
+        add<-N.button window x (y+1775) 287 30 "Create 33 x 33 terrain / heightfield" 0
+        let grid=Terrain.generateTerrain 33 33 1 (\_ _->0)
+        pure (if add then w5 {meshes=IM.insert e (Mesh "terrain" "" False) (meshes w5),materials=IM.insertWith (\_ old->old) e defaultMaterial (materials w5),animators=IM.delete e (animators w5),terrains=IM.insert e grid (terrains w5),bodies=IM.insert e defaultBody {bodyShape=Heightfield} (bodies w5)} else w5)
+      Just terrain->do
+        N.text window x (y+1775) 12 (show (terrainWidth terrain)++" x "++show (terrainDepth terrain)++" / centered XZ grid") 1
+        spacing<-N.textbox window 29 x (y+1800) 139 30 (show (terrainSpacing terrain))
+        N.text window (x+147) (y+1808) 12 "Cell spacing" 1
+        flat<-N.button window x (y+1840) 139 30 "Flat preset" 0
+        hills<-N.button window (x+147) (y+1840) 140 30 "Hills preset" 0
+        let index=(terrainDepth terrain `div` 2)*terrainWidth terrain+terrainWidth terrain `div` 2
+        N.text window x (y+1885) 12 "Center sample height / local Y" 1
+        height<-N.textbox window 30 x (y+1910) 287 30 (show (terrainHeights terrain!!index))
+        remove<-N.button window x (y+1950) 287 30 "Remove terrain / restore cube" 2
+        let edited=Terrain.setHeight index (maybe (terrainHeights terrain!!index) id (readFloat height)) terrain {terrainSpacing=max 0.01 (min 100 (maybe (terrainSpacing terrain) id (readFloat spacing)))}
+            regenerate f=Terrain.generateTerrain (terrainWidth edited) (terrainDepth edited) (terrainSpacing edited) f
+            next=if flat then regenerate (\_ _->0) else if hills then regenerate (\a b->1.2*sin (a*0.22)*cos (b*0.18)) else edited
+        pure (if remove then w5 {terrains=IM.delete e (terrains w5),meshes=IM.adjust (\m->m {geometry="cube"}) e (meshes w5),bodies=IM.adjust (\b->b {bodyShape=Box}) e (bodies w5)} else w5 {terrains=IM.insert e next (terrains w5)})
     N.text window x (y+1410) 13 "PARENT / ENTITY ID" 2
     parentText<-N.textbox window 25 x (y+1435) 116 30 (maybe "" (show . parentEntity) (IM.lookup e (parents w4)))
     attach<-N.button window (x+124) (y+1435) 79 30 "Set" 0
     detachParent<-N.button window (x+211) (y+1435) 76 30 "Clear" 0
     let parentChange=case reads parentText of
-          [(id',"")] | IM.member id' (names w4) -> Right w5 {parents=IM.insert e (Parent id' (relative (transforms w4 IM.! id') (transforms w4 IM.! e))) (parents w4)}
+          [(id',"")] | IM.member id' (names w4) -> Right w6 {parents=IM.insert e (Parent id' (relative (transforms w4 IM.! id') (transforms w4 IM.! e))) (parents w4)}
           _ -> Left "Enter a live parent entity ID"
-        candidate=if detachParent then Right w5 {parents=IM.delete e (parents w4)} else if attach then parentChange else Right w5
+        candidate=if detachParent then Right w6 {parents=IM.delete e (parents w4)} else if attach then parentChange else Right w6
         checked=candidate >>= \value->validateWorld value >> Right value
         edited=either (\err->addLog err s) (\value->change ((document s) {world=value}) s) checked
     if del then pure (editWorld (destroy e) edited) else if dupe then do
-      let (n,duplicated)=duplicate e w5
+      let (n,duplicated)=duplicate e w6
       pure (change ((document s) {world=duplicated}) s {selected=Just n})
       else pure edited {modal=if prefab then Just (SavePrefab e ("assets/prefabs/"++slug name++".prefab.json")) else modal edited}
   where w=world (document s)
@@ -509,7 +530,7 @@ attachAsset path s = case selected s of
   Nothing->addLog "Select an entity before attaching an asset." s
   Just e->addLog ("Attached "++path) $ editWorld (\w->case takeExtension path of
     ".lua"->w {scripts=IM.insert e path (scripts w)}
-    ext | ext `elem` [".obj",".gltf",".glb",".iqm"]->w {meshes=IM.insert e (Mesh path "" (ext `elem` [".gltf",".glb"])) (meshes w),materials=IM.insertWith (\_ old->old) e defaultMaterial (materials w)}
+    ext | ext `elem` [".obj",".gltf",".glb",".iqm"]->w {meshes=IM.insert e (Mesh path "" (ext `elem` [".gltf",".glb"])) (meshes w),materials=IM.insertWith (\_ old->old) e defaultMaterial (materials w),terrains=IM.delete e (terrains w),bodies=IM.adjust (\b->if bodyShape b==Heightfield then b {bodyShape=Box} else b) e (bodies w)}
     ext | ext `elem` [".png",".jpg",".jpeg",".tga"]->w {meshes=IM.adjust (\m->m {texture=path}) e (meshes w)}
     _->w) s
 
@@ -591,14 +612,14 @@ drawModal window w h s = do
     Just AddEntity->do
       N.text window (x+24) (y+22) 22 "Add entity" 0
       chosen<-foldM (\choice (i,label)->do
-        click<-N.button window (x+24) (y+71+fromIntegral (i::Int)*36) 572 34 label 0
+        click<-N.button window (x+24) (y+71+fromIntegral (i::Int)*32) 572 30 label 0
         pure (if click then Just label else choice)) Nothing (zip [0..] (builtins++["empty","point light"]))
       cancel<-N.button window (x+470) (y+381) 126 31 "Cancel" 0
       case chosen of
         Nothing->pure s {modal=if cancel then Nothing else modal s}
         Just kind->do
           let w0=world (document s)
-              (e,w1)=if kind `elem` builtins then spawnMesh kind kind w0 else spawn kind w0
+              (e,w1)=if kind=="terrain" then Terrain.spawnTerrain "Terrain" (Terrain.generateTerrain 33 33 1 (\_ _->0)) w0 else if kind `elem` builtins then spawnMesh kind kind w0 else spawn kind w0
               w2=if kind=="point light" && IM.size (lights w1)<8 then w1 {lights=IM.insert e (Light (V3 1 0.8 0.6) 30) (lights w1)} else w1
           N.clearFocus window
           pure (change ((document s) {world=w2}) s {selected=Just e,modal=Nothing,inspectorScroll=0})

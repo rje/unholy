@@ -23,7 +23,8 @@ def accessor(values, components, kind):
 
 a, b, c, d = (-3, 0, 6), (3, 0, 6), (-3, 2, 0), (3, 2, 0)
 e, f = (-3, 0, 0), (3, 0, 0)
-faces = [(a, c, d), (a, d, b), (a, e, c), (b, d, f), (e, f, d), (e, d, c), (a, b, f), (a, f, e)]
+# Outward counterclockwise winding: the sloping surface must face upward.
+faces = [(a, d, c), (a, b, d), (a, c, e), (b, f, d), (e, d, f), (e, c, d), (a, f, b), (a, e, f)]
 positions, normals, uv = [], [], []
 for face in faces:
     p, q, r = face
@@ -43,3 +44,17 @@ shutil.copyfile(ROOT/'projects/material-gallery/assets/studio.hdr', ART/'studio.
 (ART/'audio').mkdir(exist_ok=True)
 for source, name in [('jump.wav', 'jump.wav'), ('checkpoint.wav', 'pickup.wav')]:
     shutil.copyfile(ROOT/'projects/marble-run/assets/audio'/source, ART/'audio'/name)
+
+# Original repeatable moss/stone color texture, generated without external art.
+from PIL import Image
+import random
+rng=random.Random(121)
+image=Image.new('RGB',(128,128))
+for y in range(128):
+    for x in range(128):
+        grain=rng.uniform(-.08,.08)
+        vein=.06*math.sin((x+9*math.sin(y*.06))*.19)
+        moss=.10*math.sin(x*.049)*math.cos(y*.098)
+        rgb=[.66+grain+vein-moss*.25,.69+grain+vein+moss,.58+grain+vein-moss*.2]
+        image.putpixel((x,y),tuple(round(max(0,min(1,c))*255) for c in rgb))
+image.save(ART/'ground.png')

@@ -6,6 +6,7 @@ import qualified Unholy.Input as I
 import qualified Data.IntSet as S
 import qualified Unholy.Audio as Audio
 import qualified Unholy.Gizmo as Gizmo
+import qualified Unholy.Terrain as T
 import Unholy.Types
 import Unholy.Project
 import qualified Unholy.Native as N
@@ -69,6 +70,7 @@ checks window r = do
   createDirectoryIfMissing True "build/verification/haskell-renderer"
   let rect=(230,70,640,480)
   animatedRendering window r rect
+  terrainRendering window r rect
   originalUI<-readIORef (N.uiState window)
   let typing=originalUI {N.focusedText=Just (44,"-"),N.frameInput=I.emptyFrame {I.heldKeys=S.singleton 87}}
   writeIORef (N.uiState window) typing
@@ -509,3 +511,29 @@ animatedRendering window r rect=do
       glBindFramebuffer GL_READ_FRAMEBUFFER (G.framebuffer t)
       withForeignPtr storage $ \p->glReadPixels 0 0 (fromIntegral (G.targetWidth t)) (fromIntegral (G.targetHeight t)) GL_DEPTH_COMPONENT GL_FLOAT p
       pure (VS.unsafeFromForeignPtr0 storage count :: VS.Vector Float)
+
+terrainRendering :: N.Window -> R.Renderer -> (Float,Float,Float,Float) -> IO ()
+terrainRendering window r rect=do
+  let terrain=T.generateTerrain 17 17 0.5 (\x z->0.2*sin x*cos z)
+      (e,w)=T.spawnTerrain "Finite GPU patch" terrain emptyWorld
+      scene=(emptyProject "Terrain GPU") {world=w,camera=Camera (V3 6 5 8) (V3 0 0 0) 45,environment=defaultEnvironment {sunShadows=True}}
+  render window scene rect False
+  prior<-targetPixels r
+  cache<-readIORef (R.terrainInstances r)
+  bounds<-readIORef (R.poseCache r)
+  let (_,original)=cache IM.! e;vao=G.vertexArray (A.meshBuffer (head (A.modelMeshes original)))
+      edited=T.setHeight (8*17+8) 2 terrain
+  render window scene {world=w {terrains=IM.singleton e edited}} rect False
+  next<-targetPixels r
+  poses<-readIORef (R.poseCache r)
+  assert "Terrain edit retained old GPU pixels/bounds" (prior/=next && R.cachedBounds (bounds IM.! e)/=R.cachedBounds (poses IM.! e))
+  glIsVertexArray vao >>= assert "Terrain replacement leaked previous buffers" . (==GL_FALSE)
+  _<-R.getTerrainModel r e edited
+  current<-readIORef (R.terrainInstances r)
+  let (_,model)=current IM.! e;mesh=head (A.modelMeshes model)
+      ray=C.Ray (L.V3 0 5 0) (L.V3 0 (-1) 0)
+  assert "Edited terrain CPU picking missed center height" (maybe False (\distance->abs (distance-3)<0.001) (C.rayMesh ray (A.meshBounds mesh) (A.meshPositions mesh) (A.meshIndices mesh)))
+  render window scene {world=destroy e w} rect False
+  glIsVertexArray (G.vertexArray (A.meshBuffer mesh)) >>= assert "Terrain deletion leaked buffers" . (==GL_FALSE)
+  N.unloadAssets window
+  pass "finite terrain edited pixels/bounds/picking and replacement/deletion lifetime"

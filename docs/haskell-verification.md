@@ -3,17 +3,50 @@
 ## Current qualification
 
 The current macOS checkpoint builds the library, editor, benchmark and three
-independently packaged games. `make test` passes 22 engine integration groups
+independently packaged games. `make test` passes 23 engine integration groups
 and the Pulse Courier, Circuit Breaker and Threshold gameplay tests. `make render-test`
-passes 20 groups in a real graphics/audio context. Editor replay checks cover
+passes 21 groups in a real graphics/audio context. Editor replay checks cover
 failure recovery, authored component fields/links, gizmo undo/prefabs and
-imported material policy. The sections below retain the earlier checkpoints
+imported material policy, animation configuration and finite terrain authoring.
+The sections below retain the earlier checkpoints
 and their measured evidence.
 
 macOS qualification uses Apple M4, GHC 9.14.1, raylib 6.0, Bullet 3.25 and
-Cabal's bundled Lua 5.4.8. Ubuntu 24.04 headless CI also passes the library/editor
-build, engine/game tests and generated-package export check. Linux desktop
+Cabal's bundled Lua 5.4.8. Ubuntu 24.04 headless CI passes the library/editor
+build, 22 engine groups, three game suites and generated-package export through
+the [animation revision](https://github.com/rje/unholy/actions/runs/38123333183).
+The terrain slice awaits its Linux run. Linux desktop
 graphics, editor interaction and audible output are unqualified.
+
+## Finite terrain checkpoint — 2026-10-11
+
+Haskell generates finite centered height grids, indexed triangles, normals,
+repeating UVs and per-entity GPU geometry. Bullet supplies an owned static
+heightfield with the same diagonal. The copied sample backing remains alive
+until the collider is destroyed; its compound offset preserves the authored
+entity origin under scale. Grid changes acquire replacement colliders before
+releasing old bodies, and new renderer buffers before releasing old geometry.
+Terrain is a first-class persisted component, retained by duplication/prefabs,
+undo, project saves and export. The README records the bounded patch format;
+chunk streaming, LOD, sculpting brushes and material layers are unsupported.
+
+All 23 engine groups, three game suites and 21 GPU/audio groups pass. An
+asymmetric four-height fixture checks rendered-triangle versus Bullet ray hits
+on both sides of the diagonal under translation, yaw and nonuniform scale.
+It also verifies collider replacement, failed replacement retaining the live
+shape, unchanged body origin, JSON/prefab lifecycle and capsule traversal of
+rolling terrain. GPU checks cover edited pixels/bounds, triangle picking and
+disposal of old/new patch buffers.
+
+Actual editor replays add Terrain, apply Hills, undo to Flat, redo, attach a
+texture, save and reopen; the exported project retains the exact samples and
+plays from /tmp. Attaching a static model clears incompatible terrain data and
+converts its collider. Inspected captures and logs are under
+`build/verification/terrain/`. Threshold crosses textured terrain before its
+causeway, then completes/resets in the editor and relocated player. Visual
+inspection also caught and corrected the original causeway's inward triangle
+winding, removing underside/ground flicker. Center-height text entry itself
+was not exercised by replay; height updates are covered through the API tests.
 
 ## Skeletal animation checkpoint — 2026-10-11
 
@@ -366,8 +399,8 @@ and instruction-budget hook remain established native integrations. GLSL still
 runs GPU shading. File imports can create temporary native GPU data; built-in
 primitives now avoid that path entirely.
 
-The engine's own source is 4,423 Haskell lines, 383 native-adapter lines and
-292 GLSL lines: about 86.8% Haskell by physical line count. This excludes upstream
+The engine's own source is 4,524 Haskell lines, 401 native-adapter lines and
+292 GLSL lines: about 86.7% Haskell by physical line count. This excludes upstream
 libraries, the vendored widget header, tests, sample game code, generated scenes
 and tooling. It describes engine ownership, not the implementation language of
 the graphics driver, solver or decoder dependencies.
