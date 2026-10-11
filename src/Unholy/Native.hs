@@ -1,13 +1,15 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
-module HJ.Native where
+module Unholy.Native where
 
-import HJ.Types
-import qualified HJ.Audio as Audio
+import Unholy.Types
+import qualified Unholy.Gizmo as Gizmo
+import Unholy.Renderer.Camera (Mouse)
+import qualified Unholy.Audio as Audio
 import Foreign
 import Foreign.C
 import Control.Monad (unless, when)
-import qualified HJ.Renderer as R
-import qualified HJ.Renderer.GL as G
+import qualified Unholy.Renderer as R
+import qualified Unholy.Renderer.GL as G
 import qualified Graphics.GL as GL
 import Data.IORef
 import System.IO.Unsafe (unsafePerformIO)
@@ -102,7 +104,7 @@ key k pressed = (/=0) <$> cKey (fromIntegral k) (if pressed then 1 else 0)
 uiEnabled :: Bool -> IO ()
 uiEnabled enabled = cUIEnabled (if enabled then 1 else 0)
 inputs :: IO [Float]
-inputs = allocaArray 4 $ \p -> cInputs p >> map realToFrac <$> peekArray 4 p
+inputs = allocaArray 5 $ \p -> cInputs p >> map realToFrac <$> peekArray 5 p
 nativeError :: IO String
 nativeError = do
   platform<-cError >>= peekCString
@@ -149,3 +151,10 @@ drawScene :: FilePath -> Project -> (Float,Float,Float,Float) -> Bool -> Bool ->
 drawScene root p view edit grid selected = do
   screen<-dimensions
   withRenderer (\r -> R.drawScene r root p view screen edit grid selected)
+
+setGizmoMode :: Maybe Gizmo.Mode -> IO ()
+setGizmoMode mode=withRenderer (\r->R.setGizmoMode r mode)
+takeGizmoEdit :: IO (Maybe Gizmo.Edit)
+takeGizmoEdit=withRenderer R.takeGizmoEdit
+getMouse :: IO Mouse
+getMouse=R.getMouse

@@ -1,13 +1,14 @@
 module Main where
 
-import qualified HJ.Audio as Audio
-import HJ.Types
-import HJ.Project
-import qualified HJ.Native as N
-import qualified HJ.Renderer as R
-import qualified HJ.Renderer.GL as G
-import qualified HJ.Renderer.Camera as C
-import qualified HJ.Renderer.Assets as A
+import qualified Unholy.Audio as Audio
+import qualified Unholy.Gizmo as Gizmo
+import Unholy.Types
+import Unholy.Project
+import qualified Unholy.Native as N
+import qualified Unholy.Renderer as R
+import qualified Unholy.Renderer.GL as G
+import qualified Unholy.Renderer.Camera as C
+import qualified Unholy.Renderer.Assets as A
 import qualified Data.Map.Strict as M
 import qualified Data.IntMap.Strict as IM
 import qualified Data.Vector.Storable as VS
@@ -53,7 +54,7 @@ pixelAtCenter r = G.preservingState $ \_ -> do
 
 main :: IO ()
 main = runInBoundThread $ do
-  initialized<-N.initWindow "HJ / renderer checks" "assets"
+  initialized<-N.initWindow "Unholy / renderer checks" "assets"
   unless initialized (N.nativeError >>= ioError . userError)
   (N.withRenderer checks) `finally` N.close
   putStrLn "All GPU renderer checks passed."
@@ -72,6 +73,12 @@ checks r = do
   Audio.toggleMute;Audio.pause False;Audio.toggleMute
   Audio.stop
   pass ("Haskell-managed sample sounds reach the native mixer: "++show mixed++" frames, peak "++show peak)
+  forM_ [Gizmo.Move,Gizmo.Rotate,Gizmo.Scale] $ \mode->do
+    R.setGizmoMode r (Just mode)
+    render fixture rect True
+    N.screenshot ("build/verification/haskell-renderer/gizmo-"++show mode++".png")
+  R.setGizmoMode r Nothing
+  pass "Haskell move/rotate/scale gizmos draw in the real GPU viewport"
   render fixture rect False
   red<-pixelAtCenter r
   let blueFixture=fixture {world=(world fixture) {materials=IM.adjust (\m->m {albedo=V3 0.05 0.05 0.9}) 2 (materials (world fixture))}}
@@ -94,9 +101,11 @@ checks r = do
   N.begin
   N.rect 0 0 30 30 3
   R.flushUI
+  R.setGizmoMode r (Just Gizmo.Rotate)
   before<-G.captureState
   _<-N.drawScene "." fixture rect True True (Just 2)
   after<-G.captureState
+  R.setGizmoMode r Nothing
   assert ("UI context state changed: "++show (before,after)) (before==after)
   N.end
   pass "editor overlays preserve the UI's framebuffer, shader, buffers and GL state"

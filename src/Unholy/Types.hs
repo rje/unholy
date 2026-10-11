@@ -1,4 +1,4 @@
-module HJ.Types where
+module Unholy.Types where
 
 import qualified Data.IntMap.Strict as IM
 import Data.List (nub)
@@ -12,10 +12,14 @@ data Material = Material { albedo :: !V3, metallic :: !Float, roughness :: !Floa
 data Mesh = Mesh { geometry :: String, texture :: FilePath } deriving (Eq, Show, Read)
 data Light = Light { lightColor :: !V3, intensity :: !Float } deriving (Eq, Show, Read)
 data BodyShape = Box | Sphere deriving (Eq,Show,Read)
-data Body = Body { bodyShape :: !BodyShape, mass :: !Float, velocity :: !V3, restitution :: !Float, friction :: !Float, grounded :: !Bool, kinematic :: !Bool }
+data Body = Body { bodyShape :: !BodyShape, mass :: !Float, velocity :: !V3, restitution :: !Float, friction :: !Float, grounded :: !Bool, kinematic :: !Bool, trigger :: !Bool, linearDamping :: !Float, angularDamping :: !Float }
   deriving (Eq,Show,Read)
 defaultBody :: Body
-defaultBody = Body Box 0 (V3 0 0 0) 0.15 0.6 False False
+defaultBody = Body Box 0 (V3 0 0 0) 0.15 0.6 False False False 0.04 0.08
+data Parent = Parent { parentEntity :: !Entity, localTransform :: !Transform } deriving (Eq,Show,Read)
+data PhysicsSettings = PhysicsSettings { gravity :: !V3, supportNormal :: !Float, supportDistance :: !Float } deriving (Eq,Show,Read)
+defaultPhysicsSettings :: PhysicsSettings
+defaultPhysicsSettings = PhysicsSettings (V3 0 (-18) 0) 0.45 0.025
 data Camera = Camera { eye :: !V3, target :: !V3, fov :: !Float } deriving (Eq, Show, Read)
 data Environment = Environment { sunDirection :: !V3, sunColor :: !V3, sunPower :: !Float, ambient :: !Float, exposure :: !Float, skyTop :: !V3, skyBottom :: !V3, fogDensity :: !Float, sunShadows :: !Bool }
   deriving (Eq, Show, Read)
@@ -30,10 +34,11 @@ data World = World
   , materials :: !(IM.IntMap Material)
   , scripts :: !(IM.IntMap FilePath)
   , lights :: !(IM.IntMap Light)
+  , parents :: !(IM.IntMap Parent)
   , bodies :: !(IM.IntMap Body)
   } deriving (Eq, Show, Read)
 
-data Project = Project { projectName :: String, world :: !World, camera :: !Camera, environment :: !Environment }
+data Project = Project { projectName :: String, world :: !World, camera :: !Camera, environment :: !Environment, physicsSettings :: !PhysicsSettings }
   deriving (Eq, Show, Read)
 
 identity :: Transform
@@ -45,9 +50,9 @@ defaultCamera = Camera (V3 10 7 11) (V3 0 1 0) 45
 defaultEnvironment :: Environment
 defaultEnvironment = Environment (V3 (-0.5) (-1) (-0.4)) (V3 1 0.92 0.82) 3 0.12 1 (V3 0.067 0.098 0.145) (V3 0.125 0.173 0.208) 0 False
 emptyWorld :: World
-emptyWorld = World 1 IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty
+emptyWorld = World 1 IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty
 emptyProject :: String -> Project
-emptyProject n = Project n emptyWorld defaultCamera defaultEnvironment
+emptyProject n = Project n emptyWorld defaultCamera defaultEnvironment defaultPhysicsSettings
 
 spawn :: String -> World -> (Entity, World)
 spawn n w = (e, w { nextId = e+1, names = IM.insert e n (names w), transforms = IM.insert e identity (transforms w) })
@@ -58,13 +63,23 @@ spawnMesh n g w = (e, w' { meshes = IM.insert e (Mesh g "") (meshes w'), materia
   where (e,w') = spawn n w
 
 destroy :: Entity -> World -> World
-destroy e w = w { names = IM.delete e (names w), transforms = IM.delete e (transforms w), meshes = IM.delete e (meshes w), materials = IM.delete e (materials w), scripts = IM.delete e (scripts w), lights = IM.delete e (lights w), bodies = IM.delete e (bodies w) }
+destroy e w = foldr remove w (descendants e w)
+  where remove id' current = current { names = IM.delete id' (names current), transforms = IM.delete id' (transforms current), meshes = IM.delete id' (meshes current), materials = IM.delete id' (materials current), scripts = IM.delete id' (scripts current), lights = IM.delete id' (lights current), bodies = IM.delete id' (bodies current), parents=IM.delete id' (parents current) }
+
+descendants :: Entity -> World -> [Entity]
+descendants root w = walk [] root
+  where walk seen e | e `elem` seen = []
+                   | otherwise = e:concat [walk (e:seen) child | (child,p)<-IM.toAscList (parents w),parentEntity p==e]
 
 duplicate :: Entity -> World -> (Entity, World)
-duplicate e w = (n, w' { transforms = copy transforms w', meshes = copy meshes w', materials = copy materials w', scripts = copy scripts w', lights = copy lights w', bodies = copy bodies w' })
+duplicate e w = (idOf e,w')
   where
-    (n,w') = spawn (IM.findWithDefault "Entity" e (names w) ++ " copy") w
-    copy field base = maybe (field base) (\v -> IM.insert n v (field base)) (IM.lookup e (field w))
+    ids=descendants e w
+    remap=IM.fromList (zip ids [nextId w..]);idOf id'=remap IM.! id'
+    copy field=IM.union (IM.fromList [(idOf id',v) | id'<-ids,Just v<-[IM.lookup id' (field w)]]) (field w)
+    childParents=IM.fromList [(idOf id',p {parentEntity=idOf (parentEntity p)}) | id'<-ids,id'/=e,Just p<-[IM.lookup id' (parents w)]]
+    w'=w {nextId=nextId w+length ids,names=IM.adjust (++" copy") (idOf e) (copy names),transforms=copy transforms,meshes=copy meshes
+      ,materials=copy materials,scripts=copy scripts,lights=copy lights,bodies=copy bodies,parents=IM.union childParents (parents w)}
 
 renderables :: World -> [(Entity, Transform, Mesh, Material)]
 renderables w = [(e,t,m,mat) | (e,m) <- IM.toAscList (meshes w), Just t <- [IM.lookup e (transforms w)], Just mat <- [IM.lookup e (materials w)]]
@@ -76,6 +91,7 @@ validateWorld w
   | any (`IM.notMember` names w) componentIds = Left "A component refers to a missing entity"
   | any (`IM.notMember` transforms w) ids = Left "Every entity needs a transform"
   | any (`IM.notMember` materials w) (IM.keys (meshes w)) = Left "Every mesh needs a material"
+  | any badParent (IM.toList (parents w)) = Left "Invalid or cyclic entity parent"
   | any badTransform (IM.elems (transforms w)) = Left "Transforms must be finite with positive scale"
   | any badMaterial (IM.elems (materials w)) = Left "Invalid PBR material values"
   | IM.size (lights w) > 8 = Left "This renderer supports at most eight point lights"
@@ -84,10 +100,13 @@ validateWorld w
   | otherwise = Right ()
   where
     ids = IM.keys (names w)
-    componentIds = nub (concat [IM.keys (transforms w),IM.keys (meshes w),IM.keys (materials w),IM.keys (scripts w),IM.keys (lights w),IM.keys (bodies w)])
+    componentIds = nub (concat [IM.keys (transforms w),IM.keys (meshes w),IM.keys (materials w),IM.keys (scripts w),IM.keys (lights w),IM.keys (bodies w),IM.keys (parents w)])
+    badParent (e,p) = parentEntity p==e || IM.notMember (parentEntity p) (names w) || badTransform (localTransform p) || cycleAt [e] (parentEntity p) || maybe False ((>0) . mass) (IM.lookup e (bodies w))
+    cycleAt seen e | e `elem` seen = True
+                   | otherwise = maybe False (cycleAt (e:seen) . parentEntity) (IM.lookup e (parents w))
     badTransform (Transform p r s) = not (all validV [p,r,s]) || any (<=0) (vlist s)
     badMaterial (Material a m r e) = not (validV a) || any (\x -> x<0 || x>1) (vlist a) || not (all finite [m,r,e]) || m<0 || m>1 || r<0.04 || r>1 || e<0
-    badBody b = not (validV (velocity b) && all finite [mass b,restitution b,friction b]) || mass b<0 || restitution b<0 || restitution b>1 || friction b<0 || (kinematic b && mass b/=0)
+    badBody b = not (validV (velocity b) && all finite [mass b,restitution b,friction b,linearDamping b,angularDamping b]) || mass b<0 || restitution b<0 || restitution b>1 || friction b<0 || (kinematic b && mass b/=0) || (trigger b && mass b/=0) || linearDamping b<0 || linearDamping b>1 || angularDamping b<0 || angularDamping b>1
 
 finite :: Float -> Bool
 finite x = not (isNaN x || isInfinite x)

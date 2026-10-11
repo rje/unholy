@@ -1,4 +1,4 @@
-module HJ.JSON (JSON(..), parseJSON, encodeJSON, object, field, string, number, array) where
+module Unholy.JSON (JSON(..), parseJSON, encodeJSON, object, field, string, number, array) where
 
 import qualified Data.Aeson as A
 import qualified Data.Aeson.Key as K

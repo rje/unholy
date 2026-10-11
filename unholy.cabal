@@ -1,5 +1,5 @@
 cabal-version: 3.0
-name: hj
+name: unholy
 version: 0.1.0.0
 synopsis: A small native Haskell 3D game engine and editor
 license: MIT
@@ -7,10 +7,10 @@ license-file: LICENSE
 build-type: Simple
 extra-source-files: assets/shaders/*.vs, assets/shaders/*.fs, native/vendor/raygui.h, native/vendor/README.md, README.md
 
-executable hj
+executable unholy
   main-is: Main.hs
   hs-source-dirs: src
-  other-modules: HJ.Types, HJ.JSON, HJ.Project, HJ.Native, HJ.Audio, HJ.Script, HJ.Script.API, HJ.Physics, HJ.Editor, HJ.Renderer, HJ.Renderer.GL, HJ.Renderer.Assets, HJ.Renderer.Camera
+  other-modules: Unholy.Types, Unholy.Gizmo, Unholy.Transform, Unholy.Prefab, Unholy.JSON, Unholy.Project, Unholy.Native, Unholy.Audio, Unholy.Script, Unholy.Script.API, Unholy.Physics, Unholy.Editor, Unholy.Renderer, Unholy.Renderer.GL, Unholy.Renderer.Assets, Unholy.Renderer.Camera
   build-depends: base >=4.18 && <5, containers, directory, filepath, process, time, aeson, bytestring, text, OpenGLRaw >=3.3 && <3.4, linear >=1.23 && <1.24, vector, hslua-core >=2.3.2 && <2.4
   c-sources: native/hj.c, native/audio.c, native/assets.c, native/lua.c
   cxx-sources: native/physics.cpp
@@ -26,11 +26,11 @@ executable hj
   default-language: Haskell2010
   ghc-options: -Wall -threaded -O2
 
-test-suite hj-renderer-tests
+test-suite unholy-renderer-tests
   type: exitcode-stdio-1.0
   main-is: RendererSpec.hs
   hs-source-dirs: test, src
-  other-modules: HJ.Types, HJ.JSON, HJ.Project, HJ.Native, HJ.Audio, HJ.Renderer, HJ.Renderer.GL, HJ.Renderer.Assets, HJ.Renderer.Camera
+  other-modules: Unholy.Types, Unholy.Gizmo, Unholy.Transform, Unholy.Prefab, Unholy.JSON, Unholy.Project, Unholy.Native, Unholy.Audio, Unholy.Renderer, Unholy.Renderer.GL, Unholy.Renderer.Assets, Unholy.Renderer.Camera
   build-depends: base >=4.18 && <5, containers, directory, filepath, process, time, aeson, bytestring, text, OpenGLRaw >=3.3 && <3.4, linear >=1.23 && <1.24, vector, hslua-core >=2.3.2 && <2.4
   c-sources: native/hj.c, native/audio.c, native/assets.c, native/lua.c
   if os(darwin)
@@ -41,11 +41,11 @@ test-suite hj-renderer-tests
   default-language: Haskell2010
   ghc-options: -Wall -threaded -O2
 
-test-suite hj-tests
+test-suite unholy-tests
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   hs-source-dirs: test, src
-  other-modules: RuntimeSpec, HJ.Types, HJ.JSON, HJ.Project, HJ.Native, HJ.Audio, HJ.Script, HJ.Script.API, HJ.Physics, HJ.Renderer, HJ.Renderer.GL, HJ.Renderer.Assets, HJ.Renderer.Camera
+  other-modules: RuntimeSpec, FeatureSpec, Unholy.Types, Unholy.Gizmo, Unholy.Transform, Unholy.Prefab, Unholy.JSON, Unholy.Project, Unholy.Native, Unholy.Audio, Unholy.Script, Unholy.Script.API, Unholy.Physics, Unholy.Renderer, Unholy.Renderer.GL, Unholy.Renderer.Assets, Unholy.Renderer.Camera
   build-depends: base >=4.18 && <5, containers, directory, filepath, process, time, aeson, bytestring, text, OpenGLRaw >=3.3 && <3.4, linear >=1.23 && <1.24, vector, hslua-core >=2.3.2 && <2.4
   c-sources: native/hj.c, native/audio.c, native/assets.c, native/lua.c
   cxx-sources: native/physics.cpp

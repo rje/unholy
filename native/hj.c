@@ -115,6 +115,7 @@ void hj_inputs(float *out) {
     out[1]=disabled?0:(IsKeyDown(KEY_S)||IsKeyDown(KEY_DOWN))-(IsKeyDown(KEY_W)||IsKeyDown(KEY_UP));
     out[2]=!disabled&&IsKeyDown(KEY_SPACE);
     out[3]=!disabled&&IsKeyDown(KEY_R);
+    out[4]=!disabled&&IsKeyDown(KEY_E);
 }
 const char *hj_error(void) { return nativeError; }
 void hj_clear_error(void) { nativeError[0]=0; }
@@ -166,6 +167,7 @@ float hj_wheel(float x,float y,float w,float h) {
 void hj_clip(float x,float y,float w,float h) { clipRect=(Rectangle){x,y,w,h};clipped=1;BeginScissorMode((int)x,(int)y,(int)w,(int)h); }
 void hj_unclip(void) { clipped=0;EndScissorMode(); }
 // Flat mouse snapshot, including replay/platform click edges used by the UI.
+int hj_left_down(void) { return IsMouseButtonDown(MOUSE_BUTTON_LEFT); }
 void hj_render_input(float *out) {
     Vector2 mouse=GetMousePosition(),delta=GetMouseDelta();
     out[0]=mouse.x;out[1]=mouse.y;out[2]=delta.x;out[3]=delta.y;

@@ -1,8 +1,8 @@
 module RuntimeSpec (luaAccess, audioPolicy) where
 
-import HJ.Types
-import HJ.Script
-import qualified HJ.Audio as A
+import Unholy.Types
+import Unholy.Script
+import qualified Unholy.Audio as A
 import qualified Data.IntMap.Strict as IM
 import Control.Monad (unless, replicateM_, forM_)
 import Control.Exception (try, IOException, finally)

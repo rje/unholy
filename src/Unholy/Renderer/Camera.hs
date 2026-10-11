@@ -1,6 +1,6 @@
-module HJ.Renderer.Camera where
+module Unholy.Renderer.Camera where
 
-import qualified HJ.Types as T
+import qualified Unholy.Types as T
 import Linear hiding (distance, point)
 import qualified Data.Vector.Storable as VS
 import Data.Word (Word16)

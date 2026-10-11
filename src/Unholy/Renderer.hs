@@ -1,12 +1,14 @@
 {-# LANGUAGE ForeignFunctionInterface, RecordWildCards #-}
 -- Haskell owns scene preparation, asset caches, GPU lifetime, and every 3D draw.
-module HJ.Renderer where
+module Unholy.Renderer where
 
-import HJ.Types
-import HJ.Project (builtins)
-import HJ.Renderer.GL
-import HJ.Renderer.Camera
-import HJ.Renderer.Assets
+import Unholy.Types
+import Unholy.Transform (setTransform,rotationQ)
+import qualified Unholy.Gizmo as Gizmo
+import Unholy.Project (builtins)
+import Unholy.Renderer.GL
+import Unholy.Renderer.Camera
+import Unholy.Renderer.Assets
 import Graphics.GL
 import qualified Linear as L
 import qualified Data.Map.Strict as M
@@ -14,11 +16,14 @@ import qualified Data.IntMap.Strict as IM
 import qualified Data.Vector.Storable as VS
 import Data.IORef
 import Foreign
+import Foreign.C (CInt(..))
 import Control.Exception (IOException, bracketOnError, onException, try)
 import Control.Monad (forM, forM_, when, unless)
 import System.FilePath ((</>))
 
 foreign import ccall unsafe "rlDrawRenderBatchActive" flushUI :: IO ()
+foreign import ccall unsafe "hj_left_down" cLeftDown :: IO CInt
+foreign import ccall unsafe "hj_key" cKey :: CInt -> CInt -> IO CInt
 foreign import ccall unsafe "hj_render_input" cMouse :: Ptr Float -> IO ()
 
 data Renderer = Renderer
@@ -28,6 +33,7 @@ data Renderer = Renderer
   , whiteTexture :: !GLuint, screenBuffer :: !Buffer, gridBuffer :: !Buffer, boxBuffer :: !Buffer
   , axisBuffers :: ![Buffer], lightBuffer :: !Buffer
   , orbitState :: !(IORef Orbit), activeCamera :: !(IORef Camera), rendererErrors :: !(IORef [String])
+  , gizmoMode :: !(IORef (Maybe Gizmo.Mode)), gizmoDrag :: !(IORef (Maybe Gizmo.Drag)), gizmoEdit :: !(IORef (Maybe Gizmo.Edit)), ringBuffers :: ![Buffer]
   , disposed :: !(IORef Bool)
   }
 data Draw = Draw { drawEntity :: !Entity, drawModel :: !ModelData, drawMatrix :: !(L.M44 Float), drawMaterial :: !Material, drawTexture :: !GLuint }
@@ -43,8 +49,12 @@ initialize root = preservingState $ \_ ->
   bracketOnError (lineBuffer [L.V3 (-1) (-1) 0,L.V3 3 (-1) 0,L.V3 (-1) 3 0]) deleteBuffer $ \screenBuffer ->
   bracketOnError (lineBuffer gridVertices) deleteBuffer $ \gridBuffer ->
   bracketOnError (lineBuffer boxVertices) deleteBuffer $ \boxBuffer ->
-  bracketOnError (loadBuffers [[L.V3 0 0 0,p] | p<-[L.V3 1.5 0 0,L.V3 0 1.5 0,L.V3 0 0 1.5]]) (mapM_ deleteBuffer) $ \axisBuffers ->
-  bracketOnError (lineBuffer lightVertices) deleteBuffer $ \lightBuffer -> do
+  bracketOnError (loadBuffers [[L.V3 0 0 0,p] | p<-[L.V3 1 0 0,L.V3 0 1 0,L.V3 0 0 1]]) (mapM_ deleteBuffer) $ \axisBuffers ->
+  bracketOnError (lineBuffer lightVertices) deleteBuffer $ \lightBuffer ->
+  bracketOnError (loadBuffers [concat (zipWith (\a b->[a,b]) points (drop 1 points)) | axis<-[0..2],let points=Gizmo.ringPoints axis]) (mapM_ deleteBuffer) $ \ringBuffers -> do
+    gizmoMode<-newIORef Nothing
+    gizmoDrag<-newIORef Nothing
+    gizmoEdit<-newIORef Nothing
     viewportTarget<-newIORef Nothing
     meshCache<-newIORef M.empty
     textureCache<-newIORef M.empty
@@ -94,7 +104,7 @@ close r@Renderer{..} = do
     writeIORef viewportTarget Nothing
     deleteTarget shadowTarget
     mapM_ (glDeleteProgram . programId) [pbrProgram,shadowProgram,screenProgram,lineProgram]
-    mapM_ deleteBuffer ([screenBuffer,gridBuffer,boxBuffer,lightBuffer]++axisBuffers)
+    mapM_ deleteBuffer ([screenBuffer,gridBuffer,boxBuffer,lightBuffer]++axisBuffers++ringBuffers)
     deleteObject glDeleteTextures whiteTexture
 focus :: Renderer -> V3 -> IO ()
 focus r pos = modifyIORef' (orbitState r) (\o -> o {orbitTarget=toLinear pos,orbitDistance=7})
@@ -155,7 +165,9 @@ drawScene r root project rect@(x,y,w,h) (screenW,screenH) edit grid selected = d
   preservingState $ \saved -> do
     mouse<-getMouse
     orbit<-readIORef (orbitState r)
-    let nextOrbit=if edit then updateOrbit rect mouse orbit else orbit
+    let inputRect=(x,y+45,w,max 1 (h-80))
+        sceneMouse=mouse {mouseEnabled=mouseEnabled mouse && inside inputRect mouse}
+        nextOrbit=if edit then updateOrbit inputRect sceneMouse orbit else orbit
         cam=if edit then orbitCamera nextOrbit else camera project
         env=environment project
         L.V4 vx vy screenPixelsW screenPixelsH=savedViewport saved
@@ -166,7 +178,17 @@ drawScene r root project rect@(x,y,w,h) (screenW,screenH) edit grid selected = d
         lightVP=sunMatrix cam env
     writeIORef (orbitState r) nextOrbit
     writeIORef (activeCamera r) cam
-    draws<-forM (renderables (world project)) $ \(e,t,m,mat) -> do
+    mode<-readIORef (gizmoMode r)
+    drag<-readIORef (gizmoDrag r)
+    down<-(/=0) <$> cLeftDown
+    snapping<-(/=0) <$> cKey 340 0
+    let active=if edit then mode else Nothing
+        selection=selected >>= (\e->(,) e <$> IM.lookup e (transforms (world project)))
+        (nextDrag,edited,captured)=Gizmo.update rect cam sceneMouse down snapping active selection drag
+        displayed=maybe (world project) (\change->setTransform (Gizmo.editEntity change) (Gizmo.editTransform change) (world project)) edited
+    writeIORef (gizmoDrag r) nextDrag
+    writeIORef (gizmoEdit r) edited
+    draws<-forM (renderables displayed) $ \(e,t,m,mat) -> do
       model<-getModel r (if geometry m `elem` builtins then geometry m else root </> geometry m)
       tex<-getTexture r (if null (texture m) then "" else root </> texture m)
       pure (Draw e model (modelMatrix t (importTransform model)) mat tex)
@@ -199,7 +221,7 @@ drawScene r root project rect@(x,y,w,h) (screenW,screenH) edit grid selected = d
     drawBuffer GL_TRIANGLES (screenBuffer r)
     glEnable GL_DEPTH_TEST
     glEnable GL_CULL_FACE
-    setEnvironment r cam env lightVP (world project)
+    setEnvironment r cam env lightVP displayed
     forM_ draws $ \d -> do
       let shader=pbrProgram r;mat=drawMaterial d;model=drawMatrix d
       matrixUniform shader "mvp" (vp L.!*! model)
@@ -214,7 +236,10 @@ drawScene r root project rect@(x,y,w,h) (screenW,screenH) edit grid selected = d
         let tex=if drawTexture d==whiteTexture r then maybe (whiteTexture r) id (importedTexture mesh) else drawTexture d
         glBindTexture GL_TEXTURE_2D tex
         drawBuffer GL_TRIANGLES (meshBuffer mesh)
-    when edit (drawOverlays r vp (world project) draws grid selected)
+    when edit $ do
+      drawOverlays r vp displayed draws grid selected
+      forM_ active $ \tool -> forM_ (selected >>= (\e->IM.lookup e (transforms displayed))) $ \pose ->
+        drawGizmo r vp rect cam tool pose (Gizmo.dragAxis <$> nextDrag)
     -- Composite directly into the window's original framebuffer, using its
     -- pixel viewport to keep logical editor coordinates independent of DPI.
     glBindFramebuffer GL_DRAW_FRAMEBUFFER (fromIntegral (savedDrawFbo saved))
@@ -228,7 +253,7 @@ drawScene r root project rect@(x,y,w,h) (screenW,screenH) edit grid selected = d
     glBindTexture GL_TEXTURE_2D (colorTexture viewport)
     drawBuffer GL_TRIANGLES (screenBuffer r)
     checkGL "Haskell scene rendering"
-    pure $ if edit && mouseEnabled mouse && leftPressed mouse && inside rect mouse then pick (screenRay rect cam mouse) draws selected else selected
+    pure $ if edit && not captured && mouseEnabled sceneMouse && leftPressed mouse && inside inputRect mouse then pick (screenRay rect cam mouse) draws selected else selected
 
 drawGeometry :: Draw -> IO ()
 drawGeometry d = forM_ (modelMeshes (drawModel d)) (drawBuffer GL_TRIANGLES . meshBuffer)
@@ -266,8 +291,11 @@ drawOverlays r vp w draws grid selected = do
   forM_ draws $ \d -> when (Just (drawEntity d)==selected) $ do
     let (lo,hi)=transformBounds (drawMatrix d) (modelBounds (drawModel d))
     line accent (trs ((lo+hi)/2) (hi-lo)) (boxBuffer r)
-    forM_ (IM.lookup (drawEntity d) (transforms w)) $ \t ->
-      forM_ (zip (axisBuffers r) [L.V3 0.9 0.2 0.2,L.V3 0.1 0.9 0.3,L.V3 0.1 0.4 0.95]) $ \(buffer,color) -> line color (trs (toLinear (position t)) (L.V3 1 1 1)) buffer
+  forM_ (selected >>= (\e->(,) e <$> IM.lookup e (bodies w))) $ \(e,body)->forM_ (IM.lookup e (transforms w)) $ \pose->do
+    let color=if trigger body then L.V3 1 0.7 0.2 else accent
+        size=if bodyShape body==Sphere then let radius=maximum (vlist (scale pose))/2 in L.V3 radius radius radius else toLinear (scale pose)
+        matrix=L.mkTransformation (rotationQ (rotation pose)) (toLinear (position pose)) L.!*! L.scaled (let L.V3 a b c=size in L.V4 a b c 1)
+    line color matrix (if bodyShape body==Sphere then lightBuffer r else boxBuffer r)
   forM_ (IM.toAscList (lights w)) $ \(e,_) -> forM_ (IM.lookup e (transforms w)) $ \t -> do
     let radius=if Just e==selected then 0.2 else 0.12
     line (if Just e==selected then accent else L.V3 1 0.84 0.52) (trs (toLinear (position t)) (L.V3 radius radius radius)) (lightBuffer r)
@@ -277,3 +305,26 @@ pick ray draws selected = maybe selected (Just . snd) nearest
   where
     hits=[(distance,drawEntity d) | d<-draws,let localRay=objectRay (drawMatrix d) ray,mesh<-modelMeshes (drawModel d),Just distance<-[rayMesh localRay (meshBounds mesh) (meshPositions mesh) (meshIndices mesh)]]
     nearest=case hits of []->Nothing;_->Just (minimum hits)
+
+setGizmoMode :: Renderer -> Maybe Gizmo.Mode -> IO ()
+setGizmoMode r=writeIORef (gizmoMode r)
+takeGizmoEdit :: Renderer -> IO (Maybe Gizmo.Edit)
+takeGizmoEdit r=atomicModifyIORef' (gizmoEdit r) (\value->(Nothing,value))
+drawGizmo :: Renderer -> L.M44 Float -> (Float,Float,Float,Float) -> Camera -> Gizmo.Mode -> Transform -> Maybe Int -> IO ()
+drawGizmo r vp rect cam mode pose active = do
+  let shader=lineProgram r;size=Gizmo.handleSize rect cam pose
+      q=if mode==Gizmo.Scale then rotationQ (rotation pose) else L.Quaternion 1 (L.V3 0 0 0)
+      matrix=L.mkTransformation q (toLinear (position pose)) L.!*! L.scaled (L.V4 size size size 1)
+      colors=[L.V3 1 0.22 0.22,L.V3 0.2 1 0.4,L.V3 0.25 0.55 1]
+      buffers=if mode==Gizmo.Rotate then ringBuffers r else axisBuffers r
+  glDisable GL_DEPTH_TEST
+  glUseProgram (programId shader)
+  forM_ (zip3 [0..] buffers colors) $ \(i,buffer,color)->do
+    vectorUniform shader "baseColor" (if active==Just i then L.V3 1 0.85 0.25 else color)
+    matrixUniform shader "mvp" (vp L.!*! matrix)
+    drawBuffer GL_LINES buffer
+    unless (mode==Gizmo.Rotate) $ do
+      let endpoint=toLinear (position pose)+size L.*^Gizmo.axisVector mode pose i
+          handle=L.mkTransformation q endpoint L.!*! L.scaled (L.V4 (size*0.08) (size*0.08) (size*0.08) 1)
+      matrixUniform shader "mvp" (vp L.!*! handle)
+      drawBuffer GL_LINES (boxBuffer r)

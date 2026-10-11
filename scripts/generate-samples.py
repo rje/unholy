@@ -12,12 +12,23 @@ def entity(name,geometry="cube",pos=(0,0,0),scale=(1,1,1),color=(0.7,0.7,0.7),me
     if script: e["script"]=script
     if body: e["body"]=body
     return e
-def body(shape="box",mass=0,friction=0.55,bounce=0.1,kinematic=False):
+def body(shape="box",mass=0,friction=0.55,bounce=0.1,kinematic=False,trigger=False):
     result=dict(shape=shape,mass=mass,velocity=[0,0,0],restitution=bounce,friction=friction)
     if kinematic: result['kinematic']=True
+    if trigger: result['trigger']=True
     return result
 def write(folder,name,entities,eye,target,env=None):
     for i,e in enumerate(entities,1):e["id"]=i
+    # Store decorations relative to the moving body that carries them.
+    for prefix,anchor in [('Shuttle / ','Turn right'),('Lift / ','Sky lift')]:
+        parent=next((e for e in entities if e['name']==anchor),None)
+        if not parent: continue
+        a=parent['transform']
+        for e in entities:
+            if not e['name'].startswith(prefix): continue
+            t=e['transform']
+            local=dict(position=[(v-a['position'][i])/a['scale'][i] for i,v in enumerate(t['position'])],rotation=t['rotation'],scale=[v/a['scale'][i] for i,v in enumerate(t['scale'])])
+            e['parent']=dict(entity=parent['id'],local=local)
     p=dict(schemaVersion=1,name=name,nextId=len(entities)+1,entities=entities,camera=dict(eye=eye,target=target,fov=45),environment=env or ENV)
     path=ROOT/"projects"/folder/"project.hj.json"
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -37,6 +48,21 @@ write("material-lab","Material Lab",lab,[11,9,14],[0,0.8,0])
 from marble_scene import build_course
 course,eye,target,env=build_course(entity,body)
 write("marble-run","Marble Run",course,eye,target,env)
+
+def prefab(filename,parts):
+    for i,e in enumerate(parts,1): e['id']=i
+    data=dict(schemaVersion=1,name='Prefab',prefabRoot=1,nextId=len(parts)+1,entities=parts,camera=dict(eye=[10,8,10],target=[0,0,0],fov=45),environment=ENV)
+    path=ROOT/'projects/marble-run/assets/prefabs'/filename
+    path.parent.mkdir(parents=True,exist_ok=True)
+    path.write_text(json.dumps(data,indent=2)+'\n')
+gem=entity('Aether gem','assets/models/crystal.obj',(0,0,0),(.55,.8,.55),(.18,.85,1),.45,.16,script='assets/scripts/gem.lua',body=body(kinematic=True,trigger=True),emission=1.8)
+halo=entity('Gem halo','torus',(0,-.2,0),(.38,.38,.38),(.85,.63,.25),.8,.22,rot=(90,0,0),emission=.5)
+halo['parent']=dict(entity=1,local=dict(position=[0,-.25,0],rotation=[90,0,0],scale=[.38/.55,.38/.8,.38/.55]))
+prefab('aether-gem.prefab.json',[gem,halo])
+crate=entity('Physics crate','cube',(0,0,0),(.8,.8,.8),(.38,.49,.46),.12,.7,script='assets/scripts/crate.lua',body=body(mass=2),texture='assets/textures/temple-stone.png')
+trim=entity('Crate brass band','cube',(0,0,0),(.82,.12,.82),(.84,.61,.27),.75,.3)
+trim['parent']=dict(entity=1,local=dict(position=[0,0,0],rotation=[0,0,0],scale=[1.025,.15,1.025]))
+prefab('physics-crate.prefab.json',[crate,trim])
 
 arena=[entity("Steel ball","sphere",(0,0.7,7),(1.4,1.4,1.4),(0.6,0.7,0.8),1,0.14,script="assets/scripts/knockdown.lua",body=body("sphere",5,0.45)),entity("Arena floor","cube",(0,-0.5,0),(19,1,22),(0.23,0.26,0.32),0.2,0.5,body=body())]
 for i,(x,z) in enumerate([(-5,-4),(-2,-4),(1,-4),(4,-4),(-4,-7),(-1,-7),(2,-7),(5,-7)],1):

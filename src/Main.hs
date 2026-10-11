@@ -1,10 +1,10 @@
 module Main where
 
-import HJ.Types
-import HJ.Project
-import HJ.Script
-import qualified HJ.Native as N
-import HJ.Editor
+import Unholy.Types
+import Unholy.Project
+import Unholy.Script
+import qualified Unholy.Native as N
+import Unholy.Editor
 import System.Environment
 import System.Directory
 import System.FilePath
@@ -19,7 +19,7 @@ main = runInBoundThread $ do
   setLocaleEncoding utf8
   args<-getArgs
   when ("--help" `elem` args) $ do
-    putStrLn "HJ 0.1 / Haskell 3D engine\n\n  hj [PROJECT]                     Open editor (default: material-lab)\n  hj --play PROJECT                Run standalone player\n  hj --check PROJECT               Validate scene and assets\n  hj --build PROJECT               Export runnable desktop folder\n  hj --simulate STEPS PROJECT      Run headless Lua + Bullet steps\n\n  --engine-assets DIR              Engine asset directory\n  --replay FILE                    Play raylib automation events\n  --frames N --capture FILE.png    Bounded visual smoke run"
+    putStrLn "Unholy 0.1 / Haskell 3D engine\n\n  unholy [PROJECT]                     Open editor (default: material-lab)\n  unholy --play PROJECT                Run standalone player\n  unholy --check PROJECT               Validate scene and assets\n  unholy --build PROJECT               Export runnable desktop folder\n  unholy --simulate STEPS PROJECT      Run headless Lua + Bullet steps\n\n  --engine-assets DIR              Engine asset directory\n  --replay FILE                    Play raylib automation events\n  --frames N --capture FILE.png    Bounded visual smoke run"
     exitSuccess
   engine<-case option "--engine-assets" args of Just p->makeAbsolute p;Nothing->findEngineAssets
   let positional=removeOptions args
@@ -47,7 +47,7 @@ main = runInBoundThread $ do
       either failWith pure (validateWorld (world final))
       putStrLn ("Simulated "++show steps++" steps: "++projectName p)
     Nothing->do
-      ready<-N.initWindow ("HJ / "++projectName p) engine
+      ready<-N.initWindow ("Unholy / "++projectName p) engine
       when (not ready) (N.nativeError >>= failWith)
       case option "--replay" args of
         Nothing->pure ()

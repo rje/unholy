@@ -1,8 +1,8 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
-module HJ.Renderer.Assets where
+module Unholy.Renderer.Assets where
 
-import HJ.Renderer.GL
-import HJ.Renderer.Camera (Bounds, boundsOf)
+import Unholy.Renderer.GL
+import Unholy.Renderer.Camera (Bounds, boundsOf)
 import Graphics.GL
 import Foreign
 import Foreign.C

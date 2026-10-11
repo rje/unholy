@@ -68,6 +68,8 @@ def build_course(entity,body):
     for i,(x,z,color) in enumerate(((0,8,(.38,.74,1)),(0,-5,(.35,1,.73)),(9,-5,(1,.73,.36)))):
         add(f'Course light {i}',None,(x,4,z),(1,1,1))
         course[-1]['light']=dict(color=color,intensity=35)
+    add('Checkpoint trigger',None,(0,1,-5),(6,2,4),body=body(trigger=True))
+    add('Finish trigger',None,(9,1,-5),(3.5,2,5),body=body(trigger=True))
     env=dict(sunDirection=[-.55,-1,-.32],sunColor=[1,.88,.69],sunPower=3.3,ambient=.24,exposure=1,
         skyTop=[.27,.55,.72],skyBottom=[.80,.88,.84],fogDensity=.009,sunShadows=True)
     return course,[11,13,21],[0,0,3],env

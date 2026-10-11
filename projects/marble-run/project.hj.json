@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "name": "Marble Run",
-  "nextId": 166,
+  "nextId": 168,
   "entities": [
     {
       "name": "Marble",
@@ -1294,7 +1294,27 @@
         "roughness": 0.28,
         "emission": 0
       },
-      "id": 35
+      "id": 35,
+      "parent": {
+        "entity": 34,
+        "local": {
+          "position": [
+            0.0,
+            -0.28,
+            0.0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            1.04,
+            0.28,
+            1.04
+          ]
+        }
+      }
     },
     {
       "name": "Shuttle / lower rim",
@@ -1329,7 +1349,27 @@
         "roughness": 0.35,
         "emission": 0
       },
-      "id": 36
+      "id": 36,
+      "parent": {
+        "entity": 34,
+        "local": {
+          "position": [
+            0.0,
+            -0.6499999999999999,
+            0.0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.93,
+            0.22,
+            0.93
+          ]
+        }
+      }
     },
     {
       "name": "Shuttle / edge -1",
@@ -1364,7 +1404,27 @@
         "roughness": 0.28,
         "emission": 0
       },
-      "id": 37
+      "id": 37,
+      "parent": {
+        "entity": 34,
+        "local": {
+          "position": [
+            -0.47727272727272724,
+            0.54,
+            0.0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.029545454545454545,
+            0.11,
+            0.9
+          ]
+        }
+      }
     },
     {
       "name": "Shuttle / guide -1",
@@ -1399,7 +1459,27 @@
         "roughness": 0.25,
         "emission": 1.6
       },
-      "id": 38
+      "id": 38,
+      "parent": {
+        "entity": 34,
+        "local": {
+          "position": [
+            -0.44545454545454544,
+            0.58,
+            0.0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.012499999999999999,
+            0.05,
+            0.8625
+          ]
+        }
+      }
     },
     {
       "name": "Shuttle / edge 1",
@@ -1434,7 +1514,27 @@
         "roughness": 0.28,
         "emission": 0
       },
-      "id": 39
+      "id": 39,
+      "parent": {
+        "entity": 34,
+        "local": {
+          "position": [
+            0.4772727272727271,
+            0.54,
+            0.0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.029545454545454545,
+            0.11,
+            0.9
+          ]
+        }
+      }
     },
     {
       "name": "Shuttle / guide 1",
@@ -1469,7 +1569,27 @@
         "roughness": 0.25,
         "emission": 1.6
       },
-      "id": 40
+      "id": 40,
+      "parent": {
+        "entity": 34,
+        "local": {
+          "position": [
+            0.44545454545454544,
+            0.58,
+            0.0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.012499999999999999,
+            0.05,
+            0.8625
+          ]
+        }
+      }
     },
     {
       "name": "Finish island",
@@ -1842,7 +1962,27 @@
         "roughness": 0.28,
         "emission": 0
       },
-      "id": 50
+      "id": 50,
+      "parent": {
+        "entity": 49,
+        "local": {
+          "position": [
+            0.0,
+            -0.28,
+            0.0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            1.04,
+            0.28,
+            1.04
+          ]
+        }
+      }
     },
     {
       "name": "Lift / lower rim",
@@ -1877,7 +2017,27 @@
         "roughness": 0.35,
         "emission": 0
       },
-      "id": 51
+      "id": 51,
+      "parent": {
+        "entity": 49,
+        "local": {
+          "position": [
+            0.0,
+            -0.6499999999999999,
+            0.0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.93,
+            0.22,
+            0.93
+          ]
+        }
+      }
     },
     {
       "name": "Lift / edge -1",
@@ -1912,7 +2072,27 @@
         "roughness": 0.28,
         "emission": 0
       },
-      "id": 52
+      "id": 52,
+      "parent": {
+        "entity": 49,
+        "local": {
+          "position": [
+            -0.4666666666666668,
+            0.54,
+            0.0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.043333333333333335,
+            0.11,
+            0.8666666666666667
+          ]
+        }
+      }
     },
     {
       "name": "Lift / guide -1",
@@ -1947,7 +2127,27 @@
         "roughness": 0.25,
         "emission": 1.6
       },
-      "id": 53
+      "id": 53,
+      "parent": {
+        "entity": 49,
+        "local": {
+          "position": [
+            -0.41999999999999993,
+            0.58,
+            0.0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.018333333333333333,
+            0.05,
+            0.8166666666666668
+          ]
+        }
+      }
     },
     {
       "name": "Lift / edge 1",
@@ -1982,7 +2182,27 @@
         "roughness": 0.28,
         "emission": 0
       },
-      "id": 54
+      "id": 54,
+      "parent": {
+        "entity": 49,
+        "local": {
+          "position": [
+            0.4666666666666668,
+            0.54,
+            0.0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.043333333333333335,
+            0.11,
+            0.8666666666666667
+          ]
+        }
+      }
     },
     {
       "name": "Lift / guide 1",
@@ -2017,7 +2237,27 @@
         "roughness": 0.25,
         "emission": 1.6
       },
-      "id": 55
+      "id": 55,
+      "parent": {
+        "entity": 49,
+        "local": {
+          "position": [
+            0.41999999999999993,
+            0.58,
+            0.0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.018333333333333333,
+            0.05,
+            0.8166666666666668
+          ]
+        }
+      }
     },
     {
       "name": "Lift boarding bridge",
@@ -3726,7 +3966,27 @@
         "roughness": 0.2,
         "emission": 0.55
       },
-      "id": 101
+      "id": 101,
+      "parent": {
+        "entity": 49,
+        "local": {
+          "position": [
+            -0.2833333333333332,
+            1.2,
+            0.3000000000000001
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.11666666666666665,
+            1.1,
+            0.11666666666666665
+          ]
+        }
+      }
     },
     {
       "name": "Lift / crystal -5.15",
@@ -3761,7 +4021,27 @@
         "roughness": 0.2,
         "emission": 0.55
       },
-      "id": 102
+      "id": 102,
+      "parent": {
+        "entity": 49,
+        "local": {
+          "position": [
+            0.2833333333333332,
+            1.2,
+            0.3000000000000001
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.11666666666666665,
+            1.1,
+            0.11666666666666665
+          ]
+        }
+      }
     },
     {
       "name": "Lift upper balcony",
@@ -5972,6 +6252,72 @@
         "intensity": 35
       },
       "id": 165
+    },
+    {
+      "name": "Checkpoint trigger",
+      "transform": {
+        "position": [
+          0,
+          1,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          6,
+          2,
+          4
+        ]
+      },
+      "body": {
+        "shape": "box",
+        "mass": 0,
+        "velocity": [
+          0,
+          0,
+          0
+        ],
+        "restitution": 0.1,
+        "friction": 0.55,
+        "trigger": true
+      },
+      "id": 166
+    },
+    {
+      "name": "Finish trigger",
+      "transform": {
+        "position": [
+          9,
+          1,
+          -5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          3.5,
+          2,
+          5
+        ]
+      },
+      "body": {
+        "shape": "box",
+        "mass": 0,
+        "velocity": [
+          0,
+          0,
+          0
+        ],
+        "restitution": 0.1,
+        "friction": 0.55,
+        "trigger": true
+      },
+      "id": 167
     }
   ],
   "camera": {

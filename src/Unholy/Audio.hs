@@ -1,5 +1,5 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
-module HJ.Audio
+module Unholy.Audio
   ( Backend(..), Engine, newEngine, closeEngine, playOn, pauseOn, muteOn, stopOn, stats
   , initialize, close, play, pause, toggleMute, stop, mixStats ) where
 
@@ -11,7 +11,7 @@ import Control.Monad (forM, forM_, when, unless)
 import Control.Exception (finally)
 import System.Directory (doesFileExist)
 import System.IO.Unsafe (unsafePerformIO)
-import HJ.Types (finite)
+import Unholy.Types (finite)
 
 type Sound = Ptr ()
 -- Injectable device operations keep policy testable without speakers or a window.

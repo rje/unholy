@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 -- The only renderer backend: direct OpenGL calls, with explicit ownership.
-module HJ.Renderer.GL where
+module Unholy.Renderer.GL where
 
 import Graphics.GL
 import Foreign

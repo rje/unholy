@@ -1,18 +1,19 @@
 module Main where
 
 import RuntimeSpec
-import HJ.Types
-import HJ.Project
-import HJ.JSON (encodeJSON)
-import HJ.Script
-import HJ.Physics
+import FeatureSpec
+import Unholy.Types
+import Unholy.Project
+import Unholy.JSON (encodeJSON)
+import Unholy.Script
+import Unholy.Physics
 import qualified Data.IntMap.Strict as IM
 import Control.Monad (unless,foldM)
 import System.Directory
 import System.FilePath
 import Data.List (isInfixOf)
 import Control.Exception (finally)
-import qualified HJ.Renderer.Camera as C
+import qualified Unholy.Renderer.Camera as C
 import qualified Linear as L
 import qualified Data.Vector.Storable as VS
 
@@ -58,6 +59,11 @@ main = do
       assert (n++": JSON round trip") (decodeProject (encodeJSON (projectJSON p))==Right p)) ["material-lab","marble-run","knockdown"]
     assert "reject schema mismatch" (either (const True) (const False) (decodeProject "{\"schemaVersion\":9}"))
     assert "reject outside asset paths" (assetPath "../private.lua"/=Right ())
+  test "Move, rotate and scale gizmos: capture, release, snapping and bounds" gizmoTools
+  test "Marble prefab pickups, crate spawning and restart" marblePrefabs
+  test "Prefab assemblies: transforms, duplication, deletion and persistence" prefabAssembly
+  test "Physics triggers, raycasts, gravity and body lifetime" physicsQueries
+  test "Spawned scripts start once and destroyed assemblies clean up" runtimeLifecycle
   test "Bullet settles a falling sphere and reports grounding" $ do
     let (floorId,w0)=spawnMesh "Floor" "cube" emptyWorld
         (ball,w1)=spawnMesh "Ball" "sphere" w0

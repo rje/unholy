@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "name": "Prefab",
+  "prefabRoot": 1,
+  "nextId": 3,
+  "entities": [
+    {
+      "name": "Aether gem",
+      "transform": {
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.55,
+          0.8,
+          0.55
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/models/crystal.obj",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.18,
+          0.85,
+          1
+        ],
+        "metallic": 0.45,
+        "roughness": 0.16,
+        "emission": 1.8
+      },
+      "script": "assets/scripts/gem.lua",
+      "body": {
+        "shape": "box",
+        "mass": 0,
+        "velocity": [
+          0,
+          0,
+          0
+        ],
+        "restitution": 0.1,
+        "friction": 0.55,
+        "kinematic": true,
+        "trigger": true
+      },
+      "id": 1
+    },
+    {
+      "name": "Gem halo",
+      "transform": {
+        "position": [
+          0,
+          -0.2,
+          0
+        ],
+        "rotation": [
+          90,
+          0,
+          0
+        ],
+        "scale": [
+          0.38,
+          0.38,
+          0.38
+        ]
+      },
+      "mesh": {
+        "geometry": "torus",
+        "texture": ""
+      },
+      "material": {
+        "albedo": [
+          0.85,
+          0.63,
+          0.25
+        ],
+        "metallic": 0.8,
+        "roughness": 0.22,
+        "emission": 0.5
+      },
+      "parent": {
+        "entity": 1,
+        "local": {
+          "position": [
+            0,
+            -0.25,
+            0
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "scale": [
+            0.6909090909090908,
+            0.475,
+            0.6909090909090908
+          ]
+        }
+      },
+      "id": 2
+    }
+  ],
+  "camera": {
+    "eye": [
+      10,
+      8,
+      10
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "fov": 45
+  },
+  "environment": {
+    "sunDirection": [
+      -0.5,
+      -1,
+      -0.4
+    ],
+    "sunColor": [
+      1,
+      0.92,
+      0.82
+    ],
+    "sunPower": 3,
+    "ambient": 0.14,
+    "exposure": 1
+  }
+}

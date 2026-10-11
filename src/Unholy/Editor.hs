@@ -1,9 +1,14 @@
-module HJ.Editor (runEditor, runPlayer) where
+module Unholy.Editor (runEditor, runPlayer) where
 
-import HJ.Types
-import HJ.Project
-import qualified HJ.Native as N
-import HJ.Script
+import Unholy.Types
+import Unholy.Transform (setTransform,relative)
+import Unholy.Prefab
+import qualified Unholy.Gizmo as Gizmo
+import qualified Unholy.Renderer.Camera as C
+import qualified Linear as L
+import Unholy.Project
+import qualified Unholy.Native as N
+import Unholy.Script
 import qualified Data.IntMap.Strict as IM
 import Control.Monad (foldM, forM_, when)
 import System.Directory
@@ -16,13 +21,14 @@ import Data.Time.Clock.POSIX (getPOSIXTime)
 import Control.Exception (finally)
 
 data Tab = EntityTab | WorldTab deriving Eq
-data Modal = ProjectPicker FilePath [FilePath] | NewProject String | Unsaved FilePath | AddEntity deriving Eq
+data Modal = ProjectPicker FilePath [FilePath] | NewProject String | Unsaved FilePath | AddEntity | SavePrefab Entity FilePath deriving Eq
 data Editor = Editor
   { document :: Project, file :: FilePath, live :: Maybe (Runtime,Project)
   , selected :: Maybe Entity, paused :: Bool, gameView :: Bool, dirty :: Bool
   , logs :: [String], hud :: String, accumulator :: Float, tab :: Tab, grid :: Bool
   , hierarchyScroll :: Float, inspectorScroll :: Float, assetScroll :: Float
   , modal :: Maybe Modal, undo :: [Project], redo :: [Project], assets :: [FilePath]
+  , toolMode :: Gizmo.Mode, dragUndo :: Maybe Project, pendingPrefab :: Maybe FilePath
   , engineAssetsPath :: FilePath
   }
 
@@ -44,7 +50,7 @@ runEditor :: FilePath -> FilePath -> Project -> Maybe Int -> Maybe FilePath -> I
 runEditor engineAssets path p frameLimit capture = do
   a<-listAssets (takeDirectory path)
   let initial=Editor p path Nothing (fst <$> IM.lookupMin (names (world p))) False False False
-        ["Ready. Select an entity; F5 plays the project.","HJ / Haskell renderer + Bullet + Lua"] "" 0 EntityTab True 0 0 0 Nothing [] [] (sort a) engineAssets
+        ["Ready. Select an entity; F5 plays the project.","Unholy / Haskell renderer + Bullet + Lua"] "" 0 EntityTab True 0 0 0 Nothing [] [] (sort a) Gizmo.Move Nothing Nothing engineAssets
   loop 0 initial `finally` N.close
   where
     loop frame s = do
@@ -63,10 +69,13 @@ runEditor engineAssets path p frameLimit capture = do
         (w,h)<-N.dimensions
         N.begin
         N.uiEnabled (modal s==Nothing)
+        N.setGizmoMode (if isPlaying stepped || modal stepped/=Nothing || isJust (pendingPrefab stepped) then Nothing else Just (toolMode stepped))
         picked<-N.drawScene (takeDirectory (file s)) (viewProject stepped) (230,70,w-552,h-282)
           (not (isPlaying stepped && gameView stepped)) (grid stepped) (selected stepped)
-        let sceneState=stepped {selected=picked}
-        chrome<-drawChrome w h sceneState
+        edit<-N.takeGizmoEdit
+        let sceneState=applyGizmoEdit edit stepped {selected=picked}
+        placed<-placePrefab (230,115,w-552,h-362) sceneState
+        chrome<-drawChrome w h placed
         N.uiEnabled True
         next<-case modal chrome of Nothing->shortcuts chrome;Just _->drawModal w h chrome
         N.end
@@ -97,11 +106,12 @@ startPlay s | isPlaying s = stopPlay s
   missing<-checkAssets (takeDirectory (file s)) (document s)
   if not (null missing) then pure (withLogs missing s) else do
     (runtime,p,messages)<-startRuntime (takeDirectory (file s)) (document s)
-    pure (withLogs messages (addLog "Play started. Stop restores the editable scene." s {live=Just (runtime,p),paused=False,gameView=True,hud="",accumulator=0}))
+    pure (withLogs messages (addLog "Play started. Stop restores the editable scene." s {live=Just (runtime,p),paused=False,gameView=True,hud="",accumulator=0,dragUndo=Nothing,pendingPrefab=Nothing}))
 stopPlay :: Editor -> IO Editor
 stopPlay s = do
   forM_ (live s) (stopRuntime . fst)
   N.clearFocus
+  N.unloadAssets
   pure (addLog "Play stopped." s {live=Nothing,paused=False,gameView=False,hud="",accumulator=0})
 save :: Editor -> IO Editor
 save s = do
@@ -115,8 +125,8 @@ build engine s = do
 drawChrome :: Float -> Float -> Editor -> IO Editor
 drawChrome w h s = do
   N.rect 0 0 w 62 1
-  N.text 18 16 26 "HJ" 2
-  N.text 63 23 12 "ENGINE / 0.1" 1
+  N.text 18 18 20 "Unholy" 2
+  N.text 99 26 10 "0.1" 1
   new<-N.button 174 14 61 34 "New" 0
   load<-N.button 242 14 77 34 "Load" 0
   saveClicked<-N.button 326 14 68 34 "Save" 0
@@ -153,26 +163,31 @@ drawChrome w h s = do
   bottom<-drawAssets w h right
   N.rect 230 (h-204) (w-560) 1 2
   N.text 245 86 12 (if isPlaying bottom then if paused bottom then "PAUSED" else "PLAYING / 120 Hz" else "SCENE VIEW") 2
+  mode<-if isPlaying bottom then pure (toolMode bottom) else foldM (\current (i,label,tool)->do
+    clicked<-N.button (345+fromIntegral (i::Int)*83) 79 77 28 label (if current==tool then 3 else 0)
+    pure (if clicked then tool else current)) (toolMode bottom) [(0,"Move W",Gizmo.Move),(1,"Rotate E",Gizmo.Rotate),(2,"Scale R",Gizmo.Scale)]
   gameToggle<-N.button (w-464) 79 129 28 (if gameView bottom then "Game camera" else "Editor camera") 0
-  N.text 245 (h-236) 12 (if isPlaying bottom then "WASD / arrows move  |  Space jump  |  R restart" else "RMB orbit  |  MMB pan  |  Wheel zoom  |  F focus  |  Cmd+S save") 1
+  N.text 245 (h-236) 12 (if isPlaying bottom then "WASD roll | Space jump | E crate | R restart" else maybe "RMB orbit | MMB pan | W/E/R tools | Shift snap | F focus" (\path->"PLACE "++takeFileName path++" / click scene / Esc cancels") (pendingPrefab bottom)) 1
   when (isPlaying bottom && not (null (hud bottom))) $ do
     N.rect 248 125 (min 600 (w-600)) 98 0
     N.text 263 140 19 (hud bottom) 0
   N.rect 0 (h-25) w 25 0
   N.text 15 (h-19) 11 (take 95 (file bottom)) 1
   N.text (w-286) (h-19) 11 (show (IM.size (names (world (viewProject bottom))))++" entities  /  "++show (IM.size (bodies (world (viewProject bottom))))++" bodies") 1
-  pure bottom {gameView=if gameToggle then not (gameView bottom) else gameView bottom}
+  pure bottom {toolMode=mode,gameView=if gameToggle then not (gameView bottom) else gameView bottom}
 
 drawHierarchy :: Float -> Editor -> IO Editor
 drawHierarchy h s = do
   wheel<-N.wheel 0 118 222 (h-330)
-  let entries=IM.toAscList (names (world (viewProject s)))
+  let w=world (viewProject s)
+      entries=[(e,IM.findWithDefault "" e (names w)) | root<-IM.keys (IM.difference (names w) (parents w)),e<-descendants root w]
+      depth e=maybe 0 (\p->1+depth (parentEntity p)) (IM.lookup e (parents w))
       maxScroll=max 0 (fromIntegral (length entries)*35-(h-340))
       offset=max 0 (min maxScroll (hierarchyScroll s-wheel*35))
   N.clip 7 118 209 (h-336)
   picked<-foldM (\sel (i,(e,n)) -> do
     let y=122+fromIntegral (i::Int)*35-offset
-    click<-N.button 12 y 196 30 (take 21 n) (if Just e==sel then 3 else 0)
+    click<-N.button 12 y 196 30 (take 21 (replicate (min 6 (depth e)*2) ' '++n)) (if Just e==sel then 3 else 0)
     pure (if click then Just e else sel)) (selected s) (zip [0..] entries)
   N.unclip
   N.text 16 (h-209) 12 "PROJECT ASSETS" 1
@@ -181,7 +196,7 @@ drawHierarchy h s = do
 drawInspector :: Float -> Float -> Editor -> IO Editor
 drawInspector w h s = do
   wheel<-N.wheel (w-322) 118 322 (h-146)
-  let maxScroll=if tab s==WorldTab then 420 else 850
+  let maxScroll=if tab s==WorldTab then 600 else 1350
       scroll=max 0 (min maxScroll (inspectorScroll s-wheel*40))
       x=w-305; y=132-scroll
   N.clip (w-322) 120 322 (h-149)
@@ -206,7 +221,7 @@ vectorFields ident x y title (V3 a b c) = do
   values<-mapM (\(i,label,v)->do
     N.text (x+fromIntegral i*96) (y+24) 12 label 2
     str<-N.textbox (ident+i) (x+fromIntegral i*96+17) (y+17) 74 30 (short v)
-    pure (maybe v id (readFloat str))) (zip3 [0..2] ["X","Y","Z"] [a,b,c])
+    pure (if str==short v then v else maybe v id (readFloat str))) (zip3 [0..2] ["X","Y","Z"] [a,b,c])
   pure (fromListV values)
   where
     short v = let n=fromIntegral (round (v*1000)::Int)/1000::Float in show n
@@ -224,14 +239,15 @@ entityInspector x y s = case selected s of
   Just e->do
     N.text x y 12 ("ENTITY #"++show e++" / COMPONENTS") 2
     name<-N.textbox 10 x (y+24) 287 34 (names w IM.! e)
-    dupe<-N.button x (y+68) 139 28 "Duplicate" 0
-    del<-N.button (x+147) (y+68) 140 28 "Delete" 2
+    dupe<-N.button x (y+68) 88 28 "Duplicate" 0
+    del<-N.button (x+96) (y+68) 78 28 "Delete" 2
+    prefab<-N.button (x+182) (y+68) 105 28 "Save prefab" 0
     let t=transforms w IM.! e
     pos<-vectorFields 100 x (y+115) "TRANSFORM / POSITION" (position t)
     rot<-vectorFields 110 x (y+177) "ROTATION / DEGREES" (rotation t)
     sc<-vectorFields 120 x (y+239) "SCALE" (scale t)
     let t'=Transform pos rot (fromListV (map (max 0.001) (vlist sc)))
-        w0=w {names=IM.insert e name (names w),transforms=IM.insert e t' (transforms w)}
+        w0=(setTransform e t' w) {names=IM.insert e name (names w)}
     w1<-case IM.lookup e (meshes w0) of
       Nothing->do
         addMesh<-N.button x (y+309) 287 32 "Add mesh component" 0
@@ -270,23 +286,36 @@ entityInspector x y s = case selected s of
         friction'<-N.slider x (y+931) 287 "Friction" (friction body) 0 2
         bounce<-N.slider x (y+979) 287 "Restitution" (restitution body) 0 1
         motion<-N.button x (y+1013) 287 28 (if kinematic body then "Motion: kinematic / scripted" else "Motion: static or dynamic") 0
-        let kin=if motion then not (kinematic body) else kinematic body
-        pure $ if remove then w2 {bodies=IM.delete e (bodies w2)} else w2 {bodies=IM.insert e (body {bodyShape=if shape then if bodyShape body==Box then Sphere else Box else bodyShape body,mass=if kin then 0 else max 0 (maybe (mass body) id (readFloat massText)),friction=friction',restitution=bounce,kinematic=kin}) (bodies w2)}
-    N.text x (y+1084) 13 "POINT LIGHT" 2
+        sensor<-N.button x (y+1051) 287 28 (if trigger body then "Collider: trigger / no response" else "Collider: solid") 0
+        damping<-N.slider x (y+1097) 287 "Linear damping" (linearDamping body) 0 1
+        angular<-N.slider x (y+1145) 287 "Angular damping" (angularDamping body) 0 1
+        let sensing=if sensor then not (trigger body) else trigger body
+            kin=if motion then not (kinematic body) else kinematic body
+        pure $ if remove then w2 {bodies=IM.delete e (bodies w2)} else w2 {bodies=IM.insert e (body {bodyShape=if shape then if bodyShape body==Box then Sphere else Box else bodyShape body,mass=if kin || sensing || IM.member e (parents w2) then 0 else max 0 (maybe (mass body) id (readFloat massText)),friction=friction',restitution=bounce,kinematic=kin,trigger=sensing,linearDamping=damping,angularDamping=angular}) (bodies w2)}
+    N.text x (y+1205) 13 "POINT LIGHT" 2
     w4<-case IM.lookup e (lights w3) of
       Nothing->do
-        addLight<-N.button x (y+1110) 287 30 "Add point light" 0
+        addLight<-N.button x (y+1235) 287 30 "Add point light" 0
         pure (if addLight && IM.size (lights w3)<8 then w3 {lights=IM.insert e (Light (V3 1 0.8 0.6) 30) (lights w3)} else w3)
       Just l->do
-        color<-vectorFields 140 x (y+1110) "LIGHT COLOR" (lightColor l)
-        power<-N.slider x (y+1173) 287 "Intensity" (intensity l) 0 200
-        remove<-N.button x (y+1221) 287 28 "Remove light" 2
+        color<-vectorFields 140 x (y+1235) "LIGHT COLOR" (lightColor l)
+        power<-N.slider x (y+1298) 287 "Intensity" (intensity l) 0 200
+        remove<-N.button x (y+1346) 287 28 "Remove light" 2
         pure w3 {lights=if remove then IM.delete e (lights w3) else IM.insert e (Light color power) (lights w3)}
-    let edited=change ((document s) {world=w4}) s
+    N.text x (y+1410) 13 "PARENT / ENTITY ID" 2
+    parentText<-N.textbox 25 x (y+1435) 116 30 (maybe "" (show . parentEntity) (IM.lookup e (parents w4)))
+    attach<-N.button (x+124) (y+1435) 79 30 "Set" 0
+    detachParent<-N.button (x+211) (y+1435) 76 30 "Clear" 0
+    let parentChange=case reads parentText of
+          [(id',"")] | IM.member id' (names w4) -> Right w4 {parents=IM.insert e (Parent id' (relative (transforms w4 IM.! id') (transforms w4 IM.! e))) (parents w4)}
+          _ -> Left "Enter a live parent entity ID"
+        candidate=if detachParent then Right w4 {parents=IM.delete e (parents w4)} else if attach then parentChange else Right w4
+        checked=candidate >>= \value->validateWorld value >> Right value
+        edited=either (\err->addLog err s) (\value->change ((document s) {world=value}) s) checked
     if del then pure (editWorld (destroy e) edited) else if dupe then do
       let (n,duplicated)=duplicate e w4
       pure (change ((document s) {world=duplicated}) s {selected=Just n})
-      else pure edited
+      else pure edited {modal=if prefab then Just (SavePrefab e ("assets/prefabs/"++slug name++".prefab.json")) else modal edited}
   where w=world (document s)
 
 worldInspector :: Float -> Float -> Editor -> IO Editor
@@ -305,15 +334,15 @@ worldInspector x y s = do
   fov'<-N.slider x (y+566) 287 "Field of view" (fov cam) 20 100
   useView<-N.button x (y+624) 287 32 "Use current editor camera" 0
   gridToggle<-N.button x (y+668) 287 30 (if grid s then "Grid: visible" else "Grid: hidden") 0
-  N.text x (y+718) 12 "Physics: Bullet / 120 Hz / gravity -18" 1
-  sky1<-vectorFields 240 x (y+766) "SKY / TOP COLOR" (skyTop env)
-  sky2<-vectorFields 250 x (y+831) "SKY / HORIZON COLOR" (skyBottom env)
-  fog<-N.slider x (y+898) 287 "Atmospheric fog" (fogDensity env) 0 0.05
-  shadows<-N.button x (y+949) 287 30 (if sunShadows env then "Sun shadows: enabled" else "Sun shadows: disabled") 0
+  gravity'<-vectorFields 260 x (y+713) "PHYSICS / GRAVITY / 120 HZ" (gravity (physicsSettings p))
+  sky1<-vectorFields 240 x (y+791) "SKY / TOP COLOR" (skyTop env)
+  sky2<-vectorFields 250 x (y+856) "SKY / HORIZON COLOR" (skyBottom env)
+  fog<-N.slider x (y+923) 287 "Atmospheric fog" (fogDensity env) 0 0.05
+  shadows<-N.button x (y+974) 287 30 (if sunShadows env then "Sun shadows: enabled" else "Sun shadows: disabled") 0
   let camera'=if pos==tgt then cam else Camera pos tgt fov'
       env'=env {sunDirection=if sun==V3 0 0 0 then sunDirection env else sun,sunColor=color,sunPower=power,ambient=amb,exposure=exp',skyTop=sky1,skyBottom=sky2,fogDensity=fog,sunShadows=if shadows then not (sunShadows env) else sunShadows env}
   finalCamera<-if useView then N.getCamera else pure camera'
-  pure (change (p {projectName=name,environment=env',camera=finalCamera}) s {grid=if gridToggle then not (grid s) else grid s})
+  pure (change (p {projectName=name,environment=env',camera=finalCamera,physicsSettings=(physicsSettings p) {gravity=gravity'}}) s {grid=if gridToggle then not (grid s) else grid s})
   where p=document s;env=environment p;cam=camera p
 
 drawAssets :: Float -> Float -> Editor -> IO Editor
@@ -324,7 +353,7 @@ drawAssets w h s = do
   result<-foldM (\state (i,path)->do
     let y=h-181+fromIntegral (i::Int)*29-offset
     clicked<-N.button 13 y 194 25 (take 23 (takeFileName path)) 0
-    if clicked && not (isPlaying state) then pure (attachAsset path state) else pure state) s (zip [0..] (assets s))
+    if clicked && not (isPlaying state) then pure (if ".prefab.json" `isSuffixOf` path then addLog "Click the scene to place this prefab; Esc cancels." state {pendingPrefab=Just path} else attachAsset path state) else pure state) s (zip [0..] (assets s))
   N.unclip
   N.rect 230 (h-194) (w-560) 166 1
   N.text 244 (h-183) 12 "CONSOLE" 1
@@ -347,6 +376,12 @@ attachAsset path s = case selected s of
 
 shortcuts :: Editor -> IO Editor
 shortcuts s = do
+  moveKey<-N.key 87 True
+  rotateKey<-N.key 69 True
+  scaleKey<-N.key 82 True
+  escape<-N.key 256 True
+  let tool=if moveKey then Gizmo.Move else if rotateKey then Gizmo.Rotate else if scaleKey then Gizmo.Scale else toolMode s
+      ready=s {toolMode=if isPlaying s then toolMode s else tool,pendingPrefab=if escape then Nothing else pendingPrefab s}
   f5<-N.key 294 True
   f<-N.key 70 True
   ctrl<-N.key 341 False
@@ -355,7 +390,7 @@ shortcuts s = do
   z<-N.key 90 True
   shift<-N.key 340 False
   when f $ forM_ (selected s >>= (\e->IM.lookup e (transforms (world (viewProject s))))) (N.focus . position)
-  saved<-if (ctrl||cmd)&&saveKey then save s else pure s
+  saved<-if (ctrl||cmd)&&saveKey then save ready else pure ready
   toggled<-if f5 then startPlay saved else pure saved
   pure $ if (ctrl||cmd)&&z && not (isPlaying toggled) then
     if shift then case redo toggled of []->toggled;p:ps->toggled {document=p,redo=ps,undo=document toggled:undo toggled,dirty=True}
@@ -386,7 +421,7 @@ loadIntoEditor path s = do
       N.unloadAssets
       a<-sort <$> listAssets (takeDirectory absolute)
       missing<-checkAssets (takeDirectory absolute) p
-      pure (withLogs missing (addLog ("Loaded "++projectName p) stopped {document=p,file=absolute,selected=fst <$> IM.lookupMin (names (world p)),dirty=False,modal=Nothing,undo=[],redo=[],assets=a,inspectorScroll=0,hierarchyScroll=0,assetScroll=0}))
+      pure (withLogs missing (addLog ("Loaded "++projectName p) stopped {document=p,file=absolute,selected=fst <$> IM.lookupMin (names (world p)),dirty=False,modal=Nothing,undo=[],redo=[],assets=a,inspectorScroll=0,hierarchyScroll=0,assetScroll=0,pendingPrefab=Nothing,dragUndo=Nothing}))
 
 drawModal :: Float -> Float -> Editor -> IO Editor
 drawModal w h s = do
@@ -395,6 +430,25 @@ drawModal w h s = do
   N.rect x y 620 430 1
   case modal s of
     Nothing->pure s
+    Just (SavePrefab e path)->do
+      N.text (x+24) (y+22) 22 "Save prefab assembly" 0
+      N.text (x+24) (y+85) 14 "Includes the selected root and all its children." 1
+      N.text (x+24) (y+125) 13 "PROJECT ASSET PATH / .prefab.json" 1
+      path'<-N.textbox 902 (x+24) (y+157) 572 36 path
+      write<-N.button (x+24) (y+219) 270 36 "Save prefab" 1
+      cancel<-N.button (x+326) (y+219) 270 36 "Cancel" 0
+      if write then do
+        let valid=assetPath path' >> if ".prefab.json" `isSuffixOf` path' then Right () else Left "Use a .prefab.json filename"
+        result<-case valid >> makePrefab e (world (document s)) of
+          Left err->pure (Left err)
+          Right prefab->savePrefab (takeDirectory (file s) </> path') prefab
+        case result of
+          Left err->pure (addLog err s)
+          Right ()->do
+            a<-sort <$> listAssets (takeDirectory (file s))
+            N.clearFocus
+            pure (addLog ("Saved "++path') s {assets=a,modal=Nothing})
+      else pure s {modal=if cancel then Nothing else Just (SavePrefab e path')}
     Just AddEntity->do
       N.text (x+24) (y+22) 22 "Add entity" 0
       chosen<-foldM (\choice (i,label)->do
@@ -451,8 +505,8 @@ drawModal w h s = do
 
 chooseProject :: IO (Maybe FilePath)
 chooseProject = do
-  result<-ioEither $ if os=="darwin" then readProcess "osascript" ["-e","POSIX path of (choose file with prompt \"Choose an HJ project JSON file\")"] ""
-    else readProcess "zenity" ["--file-selection","--title=Choose an HJ project"] ""
+  result<-ioEither $ if os=="darwin" then readProcess "osascript" ["-e","POSIX path of (choose file with prompt \"Choose an Unholy project JSON file\")"] ""
+    else readProcess "zenity" ["--file-selection","--title=Choose an Unholy project"] ""
   pure $ either (const Nothing) (Just . takeWhile (/='\n')) result
 openText :: FilePath -> IO ()
 openText path = do
@@ -489,3 +543,35 @@ runPlayer _ root p limit capture = do
       (r',p',messages,hud')<-stepRuntime (1/120) input r project
       mapM_ putStrLn messages
       step (remaining-1/120) r' p' (if null hud' then status else hud') input
+
+applyGizmoEdit :: Maybe Gizmo.Edit -> Editor -> Editor
+applyGizmoEdit Nothing s=finishDrag s
+applyGizmoEdit (Just edit) s =
+  let original=if Gizmo.editStarted edit then Just (document s) else dragUndo s
+      next=(document s) {world=setTransform (Gizmo.editEntity edit) (Gizmo.editTransform edit) (world (document s))}
+      changed=s {document=next,dirty=dirty s || next/=document s,dragUndo=original}
+  in if Gizmo.editEnded edit then finishDrag changed else changed
+finishDrag :: Editor -> Editor
+finishDrag s=case dragUndo s of
+  Just original | original/=document s -> s {undo=take 60 (original:undo s),redo=[],dragUndo=Nothing}
+  _ -> s {dragUndo=Nothing}
+placePrefab :: (Float,Float,Float,Float) -> Editor -> IO Editor
+placePrefab rect s=case pendingPrefab s of
+  Just path | not (isPlaying s) && modal s==Nothing -> do
+    mouse<-N.getMouse
+    if not (C.mouseEnabled mouse && C.leftPressed mouse && C.inside rect mouse) then pure s else do
+      cam<-N.getCamera
+      loaded<-loadPrefab (takeDirectory (file s)) path
+      case loaded of
+        Left err->pure (addLog err s {pendingPrefab=Nothing})
+        Right prefab->do
+          let C.Ray origin direction=C.screenRay rect cam mouse
+              L.V3 _ oy _=origin;L.V3 _ dy _=direction
+              point=if abs dy>0.001 && (-oy/dy)>0 then origin+(-oy/dy) L.*^direction else C.toLinear (target cam)
+              rootPose=transforms (prefabWorld prefab) IM.! prefabRoot prefab
+              V3 _ sy _=scale rootPose
+              placement=identity {position=C.fromLinear (point+L.V3 0 (sy/2) 0)}
+          case instantiate prefab placement (world (document s)) of
+            Left err->pure (addLog err s {pendingPrefab=Nothing})
+            Right (e,_,w)->pure (addLog ("Placed "++path) (change ((document s) {world=w}) s {selected=Just e,pendingPrefab=Nothing,inspectorScroll=0}))
+  _ -> pure s

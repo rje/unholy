@@ -1,0 +1,16 @@
+# Play, collect a gem, spawn a physics crate, jump, restart, spawn again.
+c 14
+e 5 2 294 0 0 0
+e 6 1 294 0 0 0
+e 20 2 87 0 0 0
+e 60 2 69 0 0 0
+e 61 1 69 0 0 0
+e 95 2 32 0 0 0
+e 110 1 32 0 0 0
+e 160 1 87 0 0 0
+e 200 2 82 0 0 0
+e 201 1 82 0 0 0
+e 225 2 69 0 0 0
+e 226 1 69 0 0 0
+e 250 22 0 0 0 0
+e 251 22 0 0 0 0
