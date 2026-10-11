@@ -37,22 +37,25 @@ packages and exports. Linux desktop graphics and audio remain unqualified.
   file, and save the scene. Unsaved work gets a `.recovery` file on window close
   or exceptional exit. Haskell gameplay failures stop Play, report the error,
   and retain the editable scene so you can fix the game and play again.
-- **Hierarchy**: select entities; **+ Add** creates primitives, empty entities or
+- **Hierarchy**: select entities; **+ Add** creates primitives, terrain, empty entities or
   point lights. The inspector supports rename, duplicate and delete.
 - **Inspector**: edit position, Euler rotation, scale, mesh and albedo texture
   paths, material color/metallic/roughness/emission, Lua scripts, Bullet box,
-  sphere, capsule, convex-hull or static triangle-mesh bodies, mass/friction/restitution, and point lights. Scroll for the
+  sphere, capsule, convex-hull, static triangle-mesh or heightfield bodies, mass/friction/restitution, and point lights. Scroll for the
   lower components. Bodies support triggers, upright rotation locking and linear/angular damping. Set or
   clear a parent entity ID at the bottom; children retain their world pose.
   Duplicate/Delete operate on the whole selected assembly. Numeric fields support ordinary keyboard editing. Set a
-  body to **kinematic** for Lua-driven moving platforms and obstacles.
+  body to **kinematic** for Lua-driven moving platforms and obstacles. The
+  Animator section edits clip/time/rate and loop/pause; finite terrain offers
+  Flat/Hills presets, spacing and center-sample height.
 - **Assets**: place `.lua`, `.obj`, `.gltf`, `.glb` or textures in a project's
   `assets/` directory. **Refresh assets** rescans it and reloads GPU assets.
   Click a `.prefab.json` asset, then click the scene to place a new assembly on
   the ground plane (Esc cancels). **Save prefab** in the inspector saves the
   selected entity and its descendants as a reusable project asset. Click a `.hdr` asset to set the project environment. Other asset
   types attach to the selected entity. Mesh paths are project
-  relative; built-ins are `cube`, `sphere`, `plane`, `cylinder`, `torus` and `capsule`.
+  relative; built-ins are `cube`, `sphere`, `plane`, `cylinder`, `torus`, `capsule`
+  and `terrain` (with its required height-grid component).
 - **World / Camera**: edit the sun, ambient intensity, exposure, sky colors,
   atmospheric fog, sun shadows, HDR environment path/intensity/rotation and game camera;
   copy the editor camera to the project, edit gravity and toggle the grid.
@@ -359,7 +362,7 @@ The editor app launcher points at repository assets. Exported player folders
 are self-contained for this macOS architecture, but not notarized distributions.
 Linux export requires the native libraries installed on the destination machine.
 
-The next targets follow these limits and the measured baseline:
+The four development targets now have checkpoints against these limits:
 
 1. Continue measuring renderer scaling. Transform reuse, camera culling and
    material/mesh instancing now reduce the 4,000-cube submission workload from
@@ -378,6 +381,21 @@ All four targets have working checkpoints within the limits above. Animation
 blending/GPU skinning, terrain brushes/LOD/streaming, richer asset import and
 broader desktop platform qualification remain future work. Measurements and clean
 public-package qualification are in [the current verification report](docs/haskell-verification.md).
+
+The next priorities from the integration review are:
+
+1. Finish viewport authoring: place prefabs on picked surfaces and add a bounded
+   terrain height brush with one undo entry per drag. Qualify a route assembled,
+   sculpted, saved and played through the editor/export workflow.
+2. Qualify a licensed character from a conventional glTF exporter. Add only the
+   import features that asset needs and expose available clips in the inspector,
+   keeping pose evaluation and resource ownership in Haskell.
+3. Persist bindings for the existing keyboard/controller actions and turn the
+   traveler toward movement. Qualify remapping, focus/disconnect and completion
+   with both input paths.
+
+Profile a moving Threshold route before choosing further renderer or skinning
+optimization; the earlier component workloads do not measure their combined cost.
 
 ## Verification tools
 

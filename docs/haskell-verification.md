@@ -13,9 +13,9 @@ and their measured evidence.
 
 macOS qualification uses Apple M4, GHC 9.14.1, raylib 6.0, Bullet 3.25 and
 Cabal's bundled Lua 5.4.8. Ubuntu 24.04 headless CI passes the library/editor
-build, 22 engine groups, three game suites and generated-package export through
-the [animation revision](https://github.com/rje/unholy/actions/runs/38123333183).
-The terrain slice awaits its Linux run. Linux desktop
+build, all 23 engine groups, three game suites and generated-package export at
+the [terrain revision](https://github.com/rje/unholy/actions/runs/38124135219),
+`f470787`. Linux desktop
 graphics, editor interaction and audible output are unqualified.
 
 ## Finite terrain checkpoint — 2026-10-11
@@ -332,10 +332,11 @@ Cabal dependencies, not a machine without a compiler or native libraries.
 
 ## Linux headless CI
 
-The [Ubuntu 24.04 workflow](https://github.com/rje/unholy/actions/runs/38116528173)
+The [Ubuntu 24.04 workflow](https://github.com/rje/unholy/actions/runs/38124135219)
 passes with GHC 9.14.1, raylib 6.0 built from its release tag, and the distribution's
-Bullet package. It builds all library/editor/game/test targets, runs 20 engine
-integration groups and both independent game tests, then generates a package
+Bullet package at engine revision `f470787`. It builds all library/editor/game/test
+targets, runs 23 engine integration groups and all three independent game tests,
+then generates a package
 outside the checkout, builds/tests it, checks/exports its scene and runs the
 exported player's headless check from an unrelated directory. This CI-generated
 package uses the explicit local-checkout dependency; the macOS fresh-public
