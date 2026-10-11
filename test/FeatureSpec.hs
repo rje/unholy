@@ -11,7 +11,7 @@ import qualified Unholy.Renderer.Camera as C
 import qualified Linear as L
 import qualified Data.IntMap.Strict as IM
 import Control.Monad (unless,foldM)
-import Control.Exception (finally)
+import Control.Exception (finally, try, IOException)
 import System.Directory (createDirectoryIfMissing)
 import Data.List (isInfixOf)
 assert :: String -> Bool -> IO ()
@@ -110,6 +110,9 @@ runtimeLifecycle=do
   (r1,first,msg,_)<-stepRuntime (1/120) [] r started
   (r2,second,msg2,_)<-stepRuntime (1/120) [] r1 first
   stopRuntime r2
+  stopRuntime r
+  closedStep<-try (stepRuntime (1/120) [] r started) :: IO (Either IOException (Runtime,Project,[String],String))
+  assert "stopped runtime must reject stepping before accessing closed Lua VMs" (either (const True) (const False) closedStep)
   assert (show (msg,msg2)) (msg==["collected"] && msg2==["lifecycle okay"] && IM.size (names (world second))==2)
   assert "destroyed scripts stay removed" (not (any (isInfixOf "Entity ") (msg++msg2)))
 

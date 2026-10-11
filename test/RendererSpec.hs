@@ -1,5 +1,7 @@
 module Main where
 
+import qualified Unholy.Input as I
+import qualified Data.IntSet as S
 import qualified Unholy.Audio as Audio
 import qualified Unholy.Gizmo as Gizmo
 import Unholy.Types
@@ -16,7 +18,7 @@ import Graphics.GL
 import Data.IORef
 import Foreign
 import Control.Monad (unless, forM_, replicateM_)
-import Control.Exception (finally, try, IOException)
+import Control.Exception (try, IOException)
 import Control.Concurrent (runInBoundThread, forkIO, newEmptyMVar, putMVar, takeMVar)
 import System.Directory (createDirectoryIfMissing, makeAbsolute)
 
@@ -32,15 +34,15 @@ fixture = (emptyProject "Renderer calibration") {world=w,camera=Camera (V3 0 2 6
     (_,w1)=spawnMesh "Sphere" "sphere" w0
     w=w1 {transforms=IM.fromList [(1,Transform (V3 0 (-0.5) 0) (V3 0 0 0) (V3 8 1 8)),(2,identity {position=V3 0 0.5 0})],materials=IM.insert 2 (Material (V3 0.9 0.05 0.05) 0 0.4 0) (materials w1)}
 
-render :: Project -> (Float,Float,Float,Float) -> Bool -> IO ()
-render p rect edit = do
-  _<-N.frameTime
-  N.begin
+render :: N.Window -> Project -> (Float,Float,Float,Float) -> Bool -> IO ()
+render window p rect edit = do
+  _<-N.frameTime window
+  N.begin window
   -- A batch queued before the renderer and another after it test both edges.
-  N.rect 0 0 20 20 3
-  _<-N.drawScene "." p rect edit True (Just 2)
-  N.text 20 20 18 "Haskell renderer verification" 0
-  N.end
+  N.rect window 0 0 20 20 3
+  _<-N.drawScene window "." p rect edit True (Just 2)
+  N.text window 20 20 18 "Haskell renderer verification" 0
+  N.end window
 
 currentTarget :: R.Renderer -> IO G.Target
 currentTarget r = readIORef (R.viewportTarget r) >>= maybe (ioError (userError "Missing viewport")) pure
@@ -54,35 +56,48 @@ pixelAtCenter r = G.preservingState $ \_ -> do
 
 main :: IO ()
 main = runInBoundThread $ do
-  initialized<-N.initWindow "Unholy / renderer checks" "assets"
-  unless initialized (N.nativeError >>= ioError . userError)
-  (N.withRenderer checks) `finally` N.close
+  N.withWindow "Unholy / renderer checks" "assets" $ \window -> N.withRenderer window (checks window)
   putStrLn "All GPU renderer checks passed."
 
-checks :: R.Renderer -> IO ()
-checks r = do
+checks :: N.Window -> R.Renderer -> IO ()
+checks window r = do
   createDirectoryIfMissing True "build/verification/haskell-renderer"
   let rect=(230,70,640,480)
-  Audio.play "projects/marble-run/assets/audio/ambience.wav" 0.15 1 True
-  Audio.play "projects/marble-run/assets/audio/jump.wav" 0.25 1 False
-  Audio.play "projects/marble-run/assets/audio/jump.wav" 0.25 1.2 False
-  replicateM_ 12 (render fixture rect False)
+  originalUI<-readIORef (N.uiState window)
+  let typing=originalUI {N.focusedText=Just (44,"-"),N.frameInput=I.emptyFrame {I.heldKeys=S.singleton 87}}
+  writeIORef (N.uiState window) typing
+  suppressed<-N.key window 87 False
+  typed<-N.inputs window
+  N.begin window
+  incomplete<-N.textbox window 44 10 10 100 30 "1.0"
+  N.end window
+  assert "Haskell text focus must suppress game/editor shortcuts" (not suppressed && typed==[0,0,0,0,0])
+  assert "Incomplete numeric editing buffer was lost" (incomplete=="-")
+  N.clearFocus window
+  released<-N.key window 87 False
+  assert "Clearing text focus must restore shortcuts" released
+  writeIORef (N.uiState window) originalUI
+  pass "Haskell text focus, persistent edit buffers and shortcut suppression"
+  Audio.play (N.audio window) "projects/marble-run/assets/audio/ambience.wav" 0.15 1 True
+  Audio.play (N.audio window) "projects/marble-run/assets/audio/jump.wav" 0.25 1 False
+  Audio.play (N.audio window) "projects/marble-run/assets/audio/jump.wav" 0.25 1.2 False
+  replicateM_ 12 (render window fixture rect False)
   (mixed,peak)<-Audio.mixStats
   assert ("audio device produced no signal: "++show (mixed,peak)) (mixed>0 && peak>0.001)
-  Audio.pause True;replicateM_ 3 (render fixture rect False)
-  Audio.toggleMute;Audio.pause False;Audio.toggleMute
-  Audio.stop
+  N.pauseAudio window True;replicateM_ 3 (render window fixture rect False)
+  mapM_ Audio.toggleMute (N.audio window);N.pauseAudio window False;mapM_ Audio.toggleMute (N.audio window)
+  mapM_ Audio.stopOn (N.audio window)
   pass ("Haskell-managed sample sounds reach the native mixer: "++show mixed++" frames, peak "++show peak)
   forM_ [Gizmo.Move,Gizmo.Rotate,Gizmo.Scale] $ \mode->do
     R.setGizmoMode r (Just mode)
-    render fixture rect True
-    N.screenshot ("build/verification/haskell-renderer/gizmo-"++show mode++".png")
+    render window fixture rect True
+    N.screenshot window ("build/verification/haskell-renderer/gizmo-"++show mode++".png")
   R.setGizmoMode r Nothing
   pass "Haskell move/rotate/scale gizmos draw in the real GPU viewport"
-  render fixture rect False
+  render window fixture rect False
   red<-pixelAtCenter r
   let blueFixture=fixture {world=(world fixture) {materials=IM.adjust (\m->m {albedo=V3 0.05 0.05 0.9}) 2 (materials (world fixture))}}
-  render blueFixture rect False
+  render window blueFixture rect False
   blue<-pixelAtCenter r
   assert ("PBR draw/uniforms did not affect pixels: "++show (red,blue)) (fromIntegral (red!!0)>fromIntegral (red!!2)+(30::Int) && fromIntegral (blue!!2)>fromIntegral (blue!!0)+(30::Int))
   pass "direct mesh drawing and live PBR material changes affect GPU pixels"
@@ -98,25 +113,25 @@ checks r = do
     assert "shadow pass did not write depth" (VS.minimum values<0.2 && VS.maximum values>0.99)
   pass "sun shadow pass writes a complete depth framebuffer"
 
-  N.begin
-  N.rect 0 0 30 30 3
+  N.begin window
+  N.rect window 0 0 30 30 3
   R.flushUI
   R.setGizmoMode r (Just Gizmo.Rotate)
   before<-G.captureState
-  _<-N.drawScene "." fixture rect True True (Just 2)
+  _<-N.drawScene window "." fixture rect True True (Just 2)
   after<-G.captureState
   R.setGizmoMode r Nothing
   assert ("UI context state changed: "++show (before,after)) (before==after)
-  N.end
+  N.end window
   pass "editor overlays preserve the UI's framebuffer, shader, buffers and GL state"
 
   models<-readIORef (R.meshCache r)
-  replicateM_ 3 (render fixture rect False)
+  replicateM_ 3 (render window fixture rect False)
   warmed<-readIORef (R.meshCache r)
   let ids=map (G.vertexArray . A.meshBuffer) . concatMap A.modelMeshes . M.elems
   assert "cached geometry was re-uploaded" (ids models==ids warmed)
   old<-currentTarget r
-  render fixture (230,70,511,333) False
+  render window fixture (230,70,511,333) False
   resized<-currentTarget r
   let ratioX=fromIntegral (G.targetWidth old)/640::Float
       ratioY=fromIntegral (G.targetHeight old)/480::Float
@@ -142,11 +157,11 @@ checks r = do
 
   result<-newEmptyMVar
   _<-forkIO $ do
-    outcome<-try N.close :: IO (Either IOException ())
+    outcome<-try (N.close window) :: IO (Either IOException ())
     putMVar result outcome
   wrongThread<-takeMVar result
   assert "renderer allowed shutdown from a different OS thread" (either (const True) (const False) wrongThread)
-  render fixture rect False
+  render window fixture rect False
   pass "GPU access from another thread is rejected without destroying the window"
 
   -- Picking uses retained CPU triangles after the importer has been released.
@@ -158,21 +173,21 @@ checks r = do
   pass "editor picking intersects imported geometry and selects the nearest entity"
 
   forM_ ["material-lab","marble-run","knockdown"] $ \name -> do
-    N.unloadAssets
+    N.unloadAssets window
     p<-loadProject ("projects/"++name++"/project.hj.json") >>= either (ioError . userError) pure
     replicateM_ 2 $ do
-      N.begin
-      _<-N.drawScene ("projects/"++name) p (230,70,800,600) False False Nothing
-      N.text 20 20 18 name 0
-      N.end
-    err<-N.nativeError
+      N.begin window
+      _<-N.drawScene window ("projects/"++name) p (230,70,800,600) False False Nothing
+      N.text window 20 20 18 name 0
+      N.end window
+    err<-N.nativeError window
     assert (name++": "++err) (null err)
-    N.screenshot ("build/verification/haskell-renderer/check-"++name++".png")
+    N.screenshot window ("build/verification/haskell-renderer/check-"++name++".png")
   pass "all three sample projects load and draw through the Haskell renderer"
 
   loadedModels<-readIORef (R.meshCache r)
   textures<-readIORef (R.textureCache r)
-  N.unloadAssets
+  N.unloadAssets window
   forM_ (ids loadedModels) $ \vao -> glIsVertexArray vao >>= assert "project switch leaked a mesh VAO" . (==GL_FALSE)
   forM_ (filter (/=R.whiteTexture r) (M.elems textures)) $ \tex -> glIsTexture tex >>= assert "project switch leaked a texture" . (==GL_FALSE)
   pass "project switching releases cached GPU assets"
@@ -189,7 +204,7 @@ checks r = do
   -- Keep the context alive long enough to prove renderer cleanup, rather than
   -- relying on the OS reclaiming resources when the window closes.
   viewport<-currentTarget r
-  N.unloadAssets
+  N.unloadAssets window
   R.close r
   glIsTexture (R.whiteTexture r) >>= assert "white texture leaked on close" . (==GL_FALSE)
   glIsFramebuffer (G.framebuffer viewport) >>= assert "viewport leaked on close" . (==GL_FALSE)

@@ -1,5 +1,9 @@
 # Unholy verification — 2026-10-10
 
+The subsequent Haskell library/API, UI/input and primitive migration is
+qualified in [Haskell library verification](haskell-verification.md).
+The results below describe the earlier runtime-authoring pass.
+
 Qualified locally on Apple silicon macOS with GHC 9.14.1, raylib 6.0,
 Bullet 3.25 and Cabal's bundled Lua 5.4.8. Linux is configured but untested.
 

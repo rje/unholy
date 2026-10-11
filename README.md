@@ -3,7 +3,7 @@
 A small native Haskell 3D engine with a Unity-inspired editor, PBR materials,
 Lua scripting, a typed ECS, Bullet physics, and load/save/build/play projects.
 Named in honor of the original game jam. This is an experimental engine,
-with three playable/inspectable projects and a small native desktop editor.
+with four playable/inspectable projects and a small native desktop editor.
 
 ## Run on macOS
 
@@ -15,7 +15,7 @@ open build/Unholy.app
 ```
 
 Or use `make run` / `./build/unholy`. The default project is **Material Lab**.
-Click **Load** to switch to **Marble Run** or **Knockdown**, then **Play**.
+Click **Load** to switch to **Marble Run**, **Knockdown**, or **Pulse Courier**, then **Play**.
 
 ```sh
 ./build/unholy projects/marble-run/project.hj.json
@@ -52,7 +52,7 @@ build configuration, but Linux has not been qualified.
 - **World / Camera**: edit the sun, ambient intensity, exposure, sky colors,
   atmospheric fog, sun shadows and game camera;
   copy the editor camera to the project, edit gravity and toggle the grid.
-- **Play / Pause / Step**: Lua and Bullet run on a separate copy of the saved
+- **Play / Pause / Step**: Haskell game systems, Lua and Bullet run on a separate copy of the saved
   scene. Stop restores the editable scene. Step advances one 1/120 second tick.
   Toggle **Game camera / Editor camera** to inspect a running scene.
 - **Build**: export the current editable scene and its assets to
@@ -73,15 +73,32 @@ during play. Restart play after modifying a Lua source file to reload it.
 | --- | --- | --- |
 | Material Lab | Inspect the two rows of spheres and animated ring | GGX metal/roughness, point lights, emissive materials, Lua animation |
 | Marble Run / Aether Gardens | Follow the blue lights, jump the gap, reach the checkpoint, cross the sliding bridge to the gold arch; ride the left lift to the bonus balcony | Textured beveled decks and suspended gardens, sun shadows/fog, kinematic platforms and rotating sweeper, parented platform assemblies, trigger checkpoints/finish, collectible gem prefabs, runtime crate spawning/destruction, collision sounds and ambience, win/restart |
+| Pulse Courier | Roll through three orange relay cores and deliver to the green portal; E dashes | Independently packaged Haskell game, typed custom components and systems, trigger scoring, Haskell camera/audio, kinematic shuttles, all Haskell primitive geometry |
 | Knockdown | Ram all eight orange towers with the steel ball | Dynamic box/sphere collisions, rolling and toppling, Lua scoring, material changes, win/restart |
 
-Both games use **WASD/arrows**, **Space** to jump/hop, and **R** to restart.
+All games use **WASD/arrows**, **Space** to jump/hop, and **R** to restart.
 The marble game's platform edges and its gap are intentional hazards.
 **E** drops a physics crate in Marble Run. Collect all five gems, including the
 one on the bonus balcony; finishing does not require all gems. **M** toggles sound. Marble Run includes wind, quiet ambient bells, rolling,
 jump/landing effects and checkpoint/finish chimes. Pause suspends sound; Stop
 ends it. The source art and generation notes are in
 [projects/marble-run/ART.md](projects/marble-run/ART.md).
+
+## Haskell games and library
+
+`import Unholy` to author a game with statically typed state, explicit engine
+resources and before/after-physics systems. Put custom components in
+`Unholy.ECS.Components a`. The editor, exported player, tests and independently
+built sample all use the same Cabal library.
+
+```sh
+cabal build pulse-courier
+cabal run pulse-courier -- projects/pulse-courier/project.hj.json
+```
+
+See the [Haskell API guide](docs/haskell-api.md) and
+[Pulse Courier source and instructions](examples/pulse-courier/README.md).
+Haskell source changes require recompilation. Lua remains available for scripts.
 
 ## Lua
 
@@ -163,7 +180,10 @@ filtering. Raycasts return `entity`, `point`, `normal`, `fraction`, or nil.
 Haskell owns typed `IntMap` component stores, stable entity IDs, project JSON,
 the editor, play state, undo/redo, the fixed 120 Hz simulation loop, and the 3D
 renderer, scripting API, audio resource/playback management, physics body
-lifetime/policy, collision-event dispatch, prefabs and parent transforms. Components
+lifetime/policy, collision-event dispatch, prefabs, parent transforms, primitive
+geometry, input bindings, replay timing, text focus/edit buffers, clipping interaction
+and the editor theme. Window, renderer and audio ownership is explicit; Haskell
+uses no global engine singleton. Components
 are **Name, Transform, Parent, Mesh, Material, Script, Light and Body**. Systems join the
 tables they need. Small scalar FFI adapters call established native libraries:
 
@@ -192,8 +212,9 @@ tables they need. Small scalar FFI adapters call established native libraries:
 
 `Unholy.Renderer` owns the render passes and per-window resource caches;
 `Unholy.Renderer.GL` owns shader compilation, uploads, framebuffer allocation and
-the shared UI context boundary; `Unholy.Renderer.Assets` copies importer data into
-Haskell-owned arrays; `Unholy.Renderer.Camera` owns camera/picking math. The renderer
+the shared UI context boundary; `Unholy.Renderer.Primitives` generates CPU geometry
+for cube/sphere/plane/cylinder/torus and uploads it directly, without a native model.
+`Unholy.Renderer.Assets` copies file importer data into Haskell-owned arrays; `Unholy.Renderer.Camera` owns camera/picking math. The renderer
 runs on the window's bound OS thread and explicitly releases resources there.
 It flushes pending UI batches and restores OpenGL state around its passes.
 Viewport targets use actual framebuffer pixels, supporting Retina scaling.

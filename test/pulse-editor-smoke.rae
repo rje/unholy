@@ -1,0 +1,12 @@
+# Load the independent Haskell sample through the editor, play and deliver.
+c 10
+e 5 7 280 30 0 0
+e 6 6 0 0 0 0
+e 7 5 0 0 0 0
+e 20 7 560 440 0 0
+e 21 6 0 0 0 0
+e 22 5 0 0 0 0
+e 35 2 294 0 0 0
+e 36 1 294 0 0 0
+e 50 2 87 0 0 0
+e 340 1 87 0 0 0

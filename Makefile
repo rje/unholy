@@ -8,7 +8,7 @@ run: all
 app: all
 	sh scripts/macos-app.sh
 test:
-	cabal test unholy-tests --test-show-details=direct
+	cabal test unholy-tests pulse-courier-tests --test-show-details=direct
 render-test:
 	cabal test unholy-renderer-tests --test-show-details=direct
 clean:

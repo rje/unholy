@@ -1,6 +1,7 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 module Unholy.Renderer.Assets where
 
+import qualified Unholy.Renderer.Primitives as P
 import Unholy.Renderer.GL
 import Unholy.Renderer.Camera (Bounds, boundsOf)
 import Graphics.GL
@@ -9,6 +10,7 @@ import Foreign.C
 import Control.Exception (bracket, onException)
 import Control.Monad (forM_, when, unless)
 import qualified Data.Vector.Storable as VS
+import Linear.Matrix (identity)
 import Linear (M44, V3(..), V4(..), transpose)
 
 data MeshData = MeshData { meshBuffer :: !Buffer, meshPositions :: !(VS.Vector (V3 Float)), meshIndices :: !(VS.Vector Word16), meshBounds :: !Bounds, importedTexture :: !(Maybe GLuint) }
@@ -25,6 +27,12 @@ foreign import ccall unsafe "hj_asset_image_free" cFreeImage :: Ptr () -> IO ()
 foreign import ccall unsafe "hj_asset_mesh_image" cMeshImage :: Ptr () -> CInt -> Ptr CInt -> IO (Ptr ())
 
 loadModel :: FilePath -> IO ModelData
+loadModel path | Just cpu<-P.primitive path = do
+  let raw=P.vertices cpu
+      positions=VS.generate (VS.length raw `div` 8) (\i -> V3 (raw VS.! (i*8)) (raw VS.! (i*8+1)) (raw VS.! (i*8+2)))
+      bounds=boundsOf positions
+  gpu<-uploadBuffer raw (P.indices cpu)
+  pure (ModelData [MeshData gpu positions (P.indices cpu) bounds Nothing] identity bounds)
 loadModel path = withCString path $ \name -> bracket (cModel name) cFreeModel $ \p -> do
   when (p==nullPtr) (ioError (userError ("Cannot import mesh: "++path)))
   transform<-allocaArray 16 $ \out -> do

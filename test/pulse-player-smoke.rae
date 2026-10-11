@@ -1,0 +1,4 @@
+# Roll through all three relay triggers into the delivery portal.
+c 2
+e 20 2 87 0 0 0
+e 320 1 87 0 0 0

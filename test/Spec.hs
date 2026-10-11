@@ -1,5 +1,6 @@
 module Main where
 
+import LibrarySpec
 import RuntimeSpec
 import FeatureSpec
 import Unholy.Types
@@ -26,6 +27,8 @@ load name = loadProject ("projects" </> name </> projectFile) >>= either (ioErro
 
 main :: IO ()
 main = do
+  test "Haskell primitive CPU geometry, winding, UVs and collider dimensions" primitiveGeometry
+  test "Typed game-owned components and Haskell input policy" typedInputComponents
   test "renderer camera rays, transformed picking and parallel bounds" $ do
     let cam=Camera (V3 0 0 5) (V3 0 0 0) 45
         mouse=C.Mouse 500 350 0 0 0 False False True True

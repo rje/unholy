@@ -20,7 +20,7 @@ projectFile = "project.hj.json"
 
 projectJSON :: Project -> JSON
 projectJSON p = Object
-  [ ("schemaVersion", Number 1), ("name", String (projectName p))
+  [ ("schemaVersion", Number 1), ("name", String (projectName p)), ("haskellGame", maybe Null String (haskellGame p))
   , ("nextId", int (nextId w)), ("entities", Array (map entity (IM.toAscList (names w))))
   , ("camera", Object [("eye",vec (eye c)),("target",vec (target c)),("fov",num (fov c))])
   , ("physics",Object [("gravity",vec (gravity settings)),("supportNormal",num (supportNormal settings)),("supportDistance",num (supportDistance settings))])
@@ -64,7 +64,9 @@ decodeProject input = do
     ph<-field "physics" j
     PhysicsSettings <$> vfield "gravity" ph <*> floatField "supportNormal" ph <*> floatField "supportDistance" ph) defaultPhysicsSettings j
   unless (validV (gravity settings) && finite (supportNormal settings) && supportNormal settings>=0 && supportNormal settings<=1 && finite (supportDistance settings) && supportDistance settings>=0) (Left "Invalid physics settings")
-  pure (Project n (resolveWorld w) cam env settings)
+  gameKey<-optionalField "haskellGame" (field "haskellGame" j >>= \v->case v of Null->Right Nothing;_->Just <$> string v) Nothing j
+  when (gameKey==Just "") (Left "Empty Haskell game identifier")
+  pure (Project n (resolveWorld w) cam env settings gameKey)
   where
     floatField k j = field k j >>= number >>= finiteFloat
     boolean (Boolean b) = Right b

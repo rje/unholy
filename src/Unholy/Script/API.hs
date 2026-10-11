@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Unholy.Script.API (Context, newContext, beginCall, result, install, pushEntity, bindPhysics, pushEvent, commitPhysics) where
+module Unholy.Script.API (Context, newContext, beginCall, result, install, pushEntity, bindPhysics, bindAudio, pushEvent, commitPhysics) where
 
 import Unholy.Types
 import Unholy.Transform
@@ -20,14 +20,16 @@ import Control.Exception (try, IOException, displayException)
 data Context = Context
   { projectRef :: IORef Project, messages :: IORef [String], hudRef :: IORef String
   , entityCache :: IORef Lua.Reference, namedEntities :: IORef (IM.IntMap String,M.Map String Entity), root :: FilePath
-  , physicsRef :: IORef (Maybe Physics), prefabCache :: IORef (M.Map FilePath Prefab), pendingTeleports :: IORef [Entity] }
+  , physicsRef :: IORef (Maybe Physics), prefabCache :: IORef (M.Map FilePath Prefab), pendingTeleports :: IORef [Entity], audioEngine :: IORef (Maybe Audio.Engine) }
 newContext :: FilePath -> Project -> IO Context
 newContext path p = Context <$> newIORef p <*> newIORef [] <*> newIORef "" <*> newIORef (Lua.toReference (fromIntegral Lua.noref))
-  <*> newIORef (names (world p),nameIndex p) <*> pure path <*> newIORef Nothing <*> newIORef M.empty <*> newIORef []
+  <*> newIORef (names (world p),nameIndex p) <*> pure path <*> newIORef Nothing <*> newIORef M.empty <*> newIORef [] <*> newIORef Nothing
 nameIndex :: Project -> M.Map String Entity
 nameIndex p=M.fromList [(name,e) | (e,name)<-IM.toAscList (names (world p))]
 bindPhysics :: Context -> Physics -> IO ()
 bindPhysics ctx phy=writeIORef (physicsRef ctx) (Just phy)
+bindAudio :: Context -> Maybe Audio.Engine -> IO ()
+bindAudio ctx engine=writeIORef (audioEngine ctx) engine
 refreshNames :: Context -> Project -> IO ()
 refreshNames ctx p = do
   (old,_)<-readIORef (namedEntities ctx)
@@ -237,7 +239,8 @@ sound ctx looping = Lua.pushHaskellFunction $ do
   path<-readString 2
   either Lua.failLua pure (assetPath path)
   volume<-optional 3 1;pitch<-optional 4 1
-  played<-Lua.liftIO (try (Audio.play (root ctx </> path) volume pitch looping) :: IO (Either IOException ()))
+  engine<-Lua.liftIO (readIORef (audioEngine ctx))
+  played<-Lua.liftIO (try (Audio.play engine (root ctx </> path) volume pitch looping) :: IO (Either IOException ()))
   either (Lua.failLua . displayException) pure played
   pure 0
   where optional i fallback = Lua.isnoneornil i >>= \empty -> if empty then pure fallback else readNumber i

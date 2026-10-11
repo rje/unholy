@@ -1,7 +1,7 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 module Unholy.Audio
   ( Backend(..), Engine, newEngine, closeEngine, playOn, pauseOn, muteOn, stopOn, stats
-  , initialize, close, play, pause, toggleMute, stop, mixStats ) where
+  , openDevice, play, toggleMute, mixStats ) where
 
 import Foreign
 import Foreign.C
@@ -10,7 +10,6 @@ import qualified Data.Map.Strict as M
 import Control.Monad (forM, forM_, when, unless)
 import Control.Exception (finally)
 import System.Directory (doesFileExist)
-import System.IO.Unsafe (unsafePerformIO)
 import Unholy.Types (finite)
 
 type Sound = Ptr ()
@@ -111,29 +110,17 @@ closeEngine engine@(Engine backend ref) = do
   s<-readIORef ref
   unless (disposed s) $ stopOn engine `finally` (modifyIORef' ref (\x -> x {disposed=True}) >> closeDevice backend)
 
-{-# NOINLINE currentEngine #-}
-currentEngine :: IORef (Maybe Engine)
-currentEngine = unsafePerformIO (newIORef Nothing)
-initialize :: IO ()
-initialize = do
-  close
+openDevice :: IO (Maybe Engine)
+openDevice = do
   ready<-cInit
-  when (ready/=0) (newEngine nativeBackend >>= writeIORef currentEngine . Just)
-close :: IO ()
-close = do
-  current<-atomicModifyIORef' currentEngine (\x -> (Nothing,x))
-  mapM_ closeEngine current
-play :: FilePath -> Float -> Float -> Bool -> IO ()
-play path volume pitch looping = do
+  if ready==0 then pure Nothing else Just <$> newEngine nativeBackend
+play :: Maybe Engine -> FilePath -> Float -> Float -> Bool -> IO ()
+play engine path volume pitch looping = do
   exists<-doesFileExist path
   unless exists (ioError (userError ("Audio asset missing: "++path)))
-  readIORef currentEngine >>= mapM_ (\engine -> playOn engine path volume pitch looping)
-pause :: Bool -> IO ()
-pause value = readIORef currentEngine >>= mapM_ (\engine -> pauseOn engine value)
-toggleMute :: IO ()
-toggleMute = readIORef currentEngine >>= mapM_ (\engine@(Engine _ ref) -> readIORef ref >>= muteOn engine . not . muted)
-stop :: IO ()
-stop = readIORef currentEngine >>= mapM_ stopOn
+  mapM_ (\e -> playOn e path volume pitch looping) engine
+toggleMute :: Engine -> IO ()
+toggleMute engine@(Engine _ ref) = readIORef ref >>= muteOn engine . not . muted
 mixStats :: IO (Integer,Float)
 mixStats = (,) <$> (fromIntegral <$> cFrames) <*> (realToFrac <$> cPeak)
 

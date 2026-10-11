@@ -1,5 +1,6 @@
-module Main where
+module Unholy.Application (runApplication) where
 
+import Unholy.Game (SomeGame,findGame,checkGameAssets)
 import Unholy.Types
 import Unholy.Project
 import Unholy.Script
@@ -11,15 +12,16 @@ import System.FilePath
 import System.Exit
 import GHC.IO.Encoding (setLocaleEncoding,utf8)
 import Control.Monad (when,foldM)
+import Control.Exception (finally)
 import Control.Concurrent (runInBoundThread)
 import Text.Read (readMaybe)
 
-main :: IO ()
-main = runInBoundThread $ do
+runApplication :: [SomeGame] -> IO ()
+runApplication registry = runInBoundThread $ do
   setLocaleEncoding utf8
   args<-getArgs
   when ("--help" `elem` args) $ do
-    putStrLn "Unholy 0.1 / Haskell 3D engine\n\n  unholy [PROJECT]                     Open editor (default: material-lab)\n  unholy --play PROJECT                Run standalone player\n  unholy --check PROJECT               Validate scene and assets\n  unholy --build PROJECT               Export runnable desktop folder\n  unholy --simulate STEPS PROJECT      Run headless Lua + Bullet steps\n\n  --engine-assets DIR              Engine asset directory\n  --replay FILE                    Play raylib automation events\n  --frames N --capture FILE.png    Bounded visual smoke run"
+    putStrLn "Unholy 0.1 / Haskell 3D engine\n\n  unholy [PROJECT]                     Open editor (default: material-lab)\n  unholy --play PROJECT                Run standalone player\n  unholy --check PROJECT               Validate scene and assets\n  unholy --build PROJECT               Export runnable desktop folder\n  unholy --simulate STEPS PROJECT      Run headless Haskell/Lua + Bullet steps\n\n  --engine-assets DIR              Engine asset directory\n  --replay FILE                    Play raylib automation events\n  --frames N --capture FILE.png    Bounded visual smoke run"
     exitSuccess
   engine<-case option "--engine-assets" args of Just p->makeAbsolute p;Nothing->findEngineAssets
   let positional=removeOptions args
@@ -27,35 +29,37 @@ main = runInBoundThread $ do
   path<-makeAbsolute (case positional of p:_->p;_->defaultProject)
   loaded<-loadProject path
   p<-either failWith pure loaded
-  missing<-checkAssets (takeDirectory path) p
+  _<-either failWith pure (findGame registry p)
+  sceneAssets<-checkAssets (takeDirectory path) p
+  gameAssets<-checkGameAssets registry (takeDirectory path) p
+  let missing=sceneAssets++gameAssets
   if "--check" `elem` args then do
     if null missing then putStrLn ("Valid project: "++projectName p++" / "++show (length (renderables (world p)))++" renderables") else failWith (unlines missing)
   else if "--build" `elem` args then do
+    when (not (null missing)) (failWith (unlines missing))
     built<-buildProject (takeDirectory path) engine p
     either failWith (putStrLn . ("Built: "++)) built
   else case option "--simulate" args >>= readMaybe of
     Just steps->do
       when (not (null missing)) (failWith (unlines missing))
-      (runtime,started,msg)<-startRuntime (takeDirectory path) p
+      (runtime,started,msg)<-startRuntimeWith registry Nothing (takeDirectory path) p
       mapM_ putStrLn msg
-      (r,final)<-foldM (\(r,current) _->do
+      (_,final)<-foldM (\(r,current) _->do
         (nextR,nextP,messages,status)<-stepRuntime (1/120) [0,0,0,0] r current
         mapM_ putStrLn messages
         when (not (null status)) (pure ())
-        pure (nextR,nextP)) (runtime,started) [1..steps::Int]
-      stopRuntime r
+        pure (nextR,nextP)) (runtime,started) [1..steps::Int] `finally` stopRuntime runtime
       either failWith pure (validateWorld (world final))
       putStrLn ("Simulated "++show steps++" steps: "++projectName p)
     Nothing->do
-      ready<-N.initWindow ("Unholy / "++projectName p) engine
-      when (not ready) (N.nativeError >>= failWith)
-      case option "--replay" args of
-        Nothing->pure ()
-        Just replay->do valid<-N.loadReplay replay;when (not valid) (failWith "No raylib automation events loaded")
-      let limit=option "--frames" args >>= readMaybe
-          capture=option "--capture" args
-      if "--play" `elem` args then runPlayer engine (takeDirectory path) p limit capture
-        else runEditor engine path p limit capture
+      N.withWindow ("Unholy / "++projectName p) engine $ \window -> do
+        case option "--replay" args of
+          Nothing->pure ()
+          Just replay->do valid<-N.loadReplay window replay;when (not valid) (failWith "No raylib automation events loaded")
+        let limit=option "--frames" args >>= readMaybe
+            capture=option "--capture" args
+        if "--play" `elem` args then runPlayer window registry engine (takeDirectory path) p limit capture
+          else runEditor window registry engine path p limit capture
 
 failWith :: String -> IO a
 failWith message = putStrLn message >> exitFailure

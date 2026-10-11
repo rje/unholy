@@ -38,7 +38,7 @@ data World = World
   , bodies :: !(IM.IntMap Body)
   } deriving (Eq, Show, Read)
 
-data Project = Project { projectName :: String, world :: !World, camera :: !Camera, environment :: !Environment, physicsSettings :: !PhysicsSettings }
+data Project = Project { projectName :: String, world :: !World, camera :: !Camera, environment :: !Environment, physicsSettings :: !PhysicsSettings, haskellGame :: Maybe String }
   deriving (Eq, Show, Read)
 
 identity :: Transform
@@ -52,7 +52,7 @@ defaultEnvironment = Environment (V3 (-0.5) (-1) (-0.4)) (V3 1 0.92 0.82) 3 0.12
 emptyWorld :: World
 emptyWorld = World 1 IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty
 emptyProject :: String -> Project
-emptyProject n = Project n emptyWorld defaultCamera defaultEnvironment defaultPhysicsSettings
+emptyProject n = Project n emptyWorld defaultCamera defaultEnvironment defaultPhysicsSettings Nothing
 
 spawn :: String -> World -> (Entity, World)
 spawn n w = (e, w { nextId = e+1, names = IM.insert e n (names w), transforms = IM.insert e identity (transforms w) })

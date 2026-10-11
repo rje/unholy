@@ -16,15 +16,11 @@ import qualified Data.IntMap.Strict as IM
 import qualified Data.Vector.Storable as VS
 import Data.IORef
 import Foreign
-import Foreign.C (CInt(..))
 import Control.Exception (IOException, bracketOnError, onException, try)
 import Control.Monad (forM, forM_, when, unless)
 import System.FilePath ((</>))
 
 foreign import ccall unsafe "rlDrawRenderBatchActive" flushUI :: IO ()
-foreign import ccall unsafe "hj_left_down" cLeftDown :: IO CInt
-foreign import ccall unsafe "hj_key" cKey :: CInt -> CInt -> IO CInt
-foreign import ccall unsafe "hj_render_input" cMouse :: Ptr Float -> IO ()
 
 data Renderer = Renderer
   { pbrProgram :: !Program, shadowProgram :: !Program, screenProgram :: !Program, lineProgram :: !Program
@@ -149,21 +145,12 @@ ensureViewport r w h = do
       writeIORef (viewportTarget r) (Just t)
       mapM_ deleteTarget current
       pure t
-getMouse :: IO Mouse
-getMouse = allocaArray 9 $ \p -> do
-  cMouse p
-  values<-peekArray 9 p
-  case values of
-    [x,y,dx,dy,wheel,right,middle,left,enabled]->pure (Mouse x y dx dy wheel (right/=0) (middle/=0) (left/=0) (enabled/=0))
-    _->ioError (userError "Invalid platform mouse snapshot")
-
-drawScene :: Renderer -> FilePath -> Project -> (Float,Float,Float,Float) -> (Float,Float) -> Bool -> Bool -> Maybe Entity -> IO (Maybe Entity)
-drawScene r root project rect@(x,y,w,h) (screenW,screenH) edit grid selected = do
+drawScene :: Renderer -> Mouse -> Bool -> Bool -> FilePath -> Project -> (Float,Float,Float,Float) -> (Float,Float) -> Bool -> Bool -> Maybe Entity -> IO (Maybe Entity)
+drawScene r mouse down snapping root project rect@(x,y,w,h) (screenW,screenH) edit grid selected = do
   closed<-readIORef (disposed r)
   when closed (ioError (userError "Cannot draw with a disposed renderer"))
   flushUI
   preservingState $ \saved -> do
-    mouse<-getMouse
     orbit<-readIORef (orbitState r)
     let inputRect=(x,y+45,w,max 1 (h-80))
         sceneMouse=mouse {mouseEnabled=mouseEnabled mouse && inside inputRect mouse}
@@ -180,8 +167,6 @@ drawScene r root project rect@(x,y,w,h) (screenW,screenH) edit grid selected = d
     writeIORef (activeCamera r) cam
     mode<-readIORef (gizmoMode r)
     drag<-readIORef (gizmoDrag r)
-    down<-(/=0) <$> cLeftDown
-    snapping<-(/=0) <$> cKey 340 0
     let active=if edit then mode else Nothing
         selection=selected >>= (\e->(,) e <$> IM.lookup e (transforms (world project)))
         (nextDrag,edited,captured)=Gizmo.update rect cam sceneMouse down snapping active selection drag

@@ -9,12 +9,7 @@
 void *hj_asset_model(const char *path) {
     Model *m=calloc(1,sizeof(Model));
     if(!m) return NULL;
-    if(!strcmp(path,"cube")) *m=LoadModelFromMesh(GenMeshCube(1,1,1));
-    else if(!strcmp(path,"sphere")) *m=LoadModelFromMesh(GenMeshSphere(0.5f,32,32));
-    else if(!strcmp(path,"plane")) *m=LoadModelFromMesh(GenMeshPlane(1,1,1,1));
-    else if(!strcmp(path,"cylinder")) *m=LoadModelFromMesh(GenMeshCylinder(0.5f,1,32));
-    else if(!strcmp(path,"torus")) *m=LoadModelFromMesh(GenMeshTorus(0.2f,0.8f,24,32));
-    else if(FileExists(path)) *m=LoadModel(path);
+    if(FileExists(path)) *m=LoadModel(path);
     if(!IsModelValid(*m)) { if(m->meshCount) UnloadModel(*m);free(m);return NULL; }
     return m;
 }
