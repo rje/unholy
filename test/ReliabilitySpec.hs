@@ -1,7 +1,7 @@
 module ReliabilitySpec (projectReliability) where
 
 import Unholy
-import Unholy.Project (checkAssetFiles,assetPath)
+import Unholy.Project (checkAssetFiles,checkAssets,assetPath,copyTree)
 import qualified Data.IntMap.Strict as IM
 import Control.Monad (unless,forM_)
 import System.Directory
@@ -51,3 +51,24 @@ projectReliability=do
   createDirectoryLink (base </> "nested") (root </> "linked")
   errors<-checkAssetFiles root ["linked/game.dat"] `finally` removeDirectoryLink (root </> "linked")
   assert "Symlinked asset ancestor rejected" (not (null errors))
+  copyTree "projects/material-gallery/assets" (root </> "import")
+  let (model,w2)=spawnMesh "Imported" "import/cards.gltf" (world p)
+      imported=p {world=w2 {meshes=IM.adjust (\mesh->mesh {useImportedMaterials=True}) model (meshes w2)}}
+  complete<-checkAssets root imported
+  assert "glTF headless material preflight" (null complete)
+  removeFile (root </> "import/directional-normal.png")
+  absent<-checkAssets root imported
+  assert "glTF image dependency missing is detected headlessly" (not (null absent))
+  copyFile "projects/material-gallery/assets/directional-normal.png" (root </> "import/directional-normal.png")
+  exported<-buildProject root "assets" imported >>= either (ioError.userError) pure
+  forM_ ["import/cards.bin","import/gray.png","import/metal-rough.png","import/directional-normal.png"] $ \ref->doesFileExist (exported </> ref) >>= assert ("Exported importer dependency missing: "++ref)
+  writeFile (root </> "import/unsupported.gltf") "{\"materials\":[{\"alphaMode\":\"BLEND\"}]}"
+  let unsupported=imported {world=(world imported) {meshes=IM.adjust (\mesh->mesh {geometry="import/unsupported.gltf"}) model (meshes (world imported))}}
+  rejected<-checkAssets root unsupported
+  assert "Unsupported imported materials fail before export" (not (null rejected))
+  let legacy=unsupported {world=(world unsupported) {meshes=IM.adjust (\mesh->mesh {useImportedMaterials=False}) model (meshes (world unsupported))}}
+  retainedGeometry<-checkAssets root legacy
+  assert "Legacy entity override does not reject unsupported imported materials" (null retainedGeometry)
+  writeFile (root </> "import/unsupported.gltf") "{\"samplers\":[{\"wrapS\":33071}]}"
+  samplerErrors<-checkAssets root unsupported
+  assert "Unsupported texture samplers fail explicitly" (not (null samplerErrors))

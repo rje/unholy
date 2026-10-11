@@ -50,6 +50,30 @@ real editor and its independent exported player both reach the completed circuit
 The captures are `build/verification/circuit-editor.png` and `circuit-export.png`.
 The public-revision starter path is qualified in the clean-build checkpoint.
 
+## Static imported materials checkpoint
+
+The 15 real GPU/audio groups now include retained glTF float factors and six
+submesh slots, texture internal color-space formats, distinguishable metallic
+and roughness channels, a numeric sRGB-to-linear pixel expectation, directional
+normal-map pixels, mirrored UV handedness and degenerate UV fallback. They also
+check explicit override save/reopen and repeated glTF/GLB texture release after
+the temporary importer has been destroyed. Existing sample rendering still passes.
+
+Headless checks detect missing imported images and unsupported imported material
+features. They verify top-level glTF exports include their external buffers/images
+and preserve the legacy entity override path for unsupported material features.
+
+`python3 scripts/verify-materials.py` toggles material policy twice in the actual
+editor, saves/reopens both choices, exports a model outside `assets/`, and launches
+the export from `/tmp`. The local and relocated player captures match pixel for
+pixel. Captures are under `build/verification/imported-materials/`. Matched
+before/after captures use the same gallery, lighting and camera with the previous
+renderer and current renderer: `build/verification/material-{before,after}.png`.
+
+This qualifies opaque static UV0 materials with repeat/linear mip sampling,
+without vertex colors, skinning, transparency, IBL or material extensions. The
+README states the importer/node and external-URI limits.
+
 `cabal build all --enable-tests` builds the library, editor, independent sample
 executable and both test packages. The engine's Haskell modules and native
 adapters compile once into the library; the sample depends on that library.

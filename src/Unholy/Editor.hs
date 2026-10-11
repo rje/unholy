@@ -364,7 +364,7 @@ entityInspector window x y s = case selected s of
     w1<-case IM.lookup e (meshes w0) of
       Nothing->do
         addMesh<-N.button window x (y+309) 287 32 "Add mesh component" 0
-        pure (if addMesh then w0 {meshes=IM.insert e (Mesh "cube" "") (meshes w0),materials=IM.insert e defaultMaterial (materials w0)} else w0)
+        pure (if addMesh then w0 {meshes=IM.insert e (Mesh "cube" "" False) (meshes w0),materials=IM.insert e defaultMaterial (materials w0)} else w0)
       Just mesh->do
         N.text window x (y+309) 13 "MESH" 2
         remove<-N.button window (x+220) (y+302) 67 25 "Remove" 2
@@ -372,13 +372,14 @@ entityInspector window x y s = case selected s of
         N.text window x (y+376) 12 "ALBEDO TEXTURE / PROJECT PATH" 1
         tex<-N.textbox window 21 x (y+398) 287 31 (texture mesh)
         N.text window x (y+450) 13 "PBR MATERIAL" 2
+        policy<-N.button window (x+127) (y+442) 160 28 (if useImportedMaterials mesh then "Imported slots" else "Entity override") 0
         color<-vectorFields window 130 x (y+477) "BASE COLOR / SRGB 0..1" (albedo (IM.findWithDefault defaultMaterial e (materials w0)))
         let m=IM.findWithDefault defaultMaterial e (materials w0)
         metal<-N.slider window x (y+543) 287 "Metallic" (metallic m) 0 1
         rough<-N.slider window x (y+591) 287 "Roughness" (roughness m) 0.04 1
         emit<-N.slider window x (y+639) 287 "Emission" (emission m) 0 8
         pure $ if remove then w0 {meshes=IM.delete e (meshes w0),materials=IM.delete e (materials w0)} else w0
-          {meshes=IM.insert e (Mesh geometry' tex) (meshes w0),materials=IM.insert e (Material (fromListV (map (max 0 . min 1) (vlist color))) metal rough emit) (materials w0)}
+          {meshes=IM.insert e (Mesh geometry' tex (if policy then not (useImportedMaterials mesh) else useImportedMaterials mesh)) (meshes w0),materials=IM.insert e (Material (fromListV (map (max 0 . min 1) (vlist color))) metal rough emit) (materials w0)}
     N.text window x (y+704) 13 "LUA SCRIPT" 2
     let script=IM.findWithDefault "" e (scripts w1)
     script'<-N.textbox window 22 x (y+730) 287 31 script
@@ -483,7 +484,7 @@ attachAsset path s = case selected s of
   Nothing->addLog "Select an entity before attaching an asset." s
   Just e->addLog ("Attached "++path) $ editWorld (\w->case takeExtension path of
     ".lua"->w {scripts=IM.insert e path (scripts w)}
-    ext | ext `elem` [".obj",".gltf",".glb",".iqm"]->w {meshes=IM.insert e (Mesh path "") (meshes w),materials=IM.insertWith (\_ old->old) e defaultMaterial (materials w)}
+    ext | ext `elem` [".obj",".gltf",".glb",".iqm"]->w {meshes=IM.insert e (Mesh path "" (ext `elem` [".gltf",".glb"])) (meshes w),materials=IM.insertWith (\_ old->old) e defaultMaterial (materials w)}
     ext | ext `elem` [".png",".jpg",".jpeg",".tga"]->w {meshes=IM.adjust (\m->m {texture=path}) e (meshes w)}
     _->w) s
 

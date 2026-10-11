@@ -9,7 +9,7 @@ data Transform = Transform { position :: !V3, rotation :: !V3, scale :: !V3 }
   deriving (Eq, Show, Read)
 data Material = Material { albedo :: !V3, metallic :: !Float, roughness :: !Float, emission :: !Float }
   deriving (Eq, Show, Read)
-data Mesh = Mesh { geometry :: String, texture :: FilePath } deriving (Eq, Show, Read)
+data Mesh = Mesh { geometry :: String, texture :: FilePath, useImportedMaterials :: !Bool } deriving (Eq, Show, Read)
 data Light = Light { lightColor :: !V3, intensity :: !Float } deriving (Eq, Show, Read)
 -- Persistent game-owned configuration. References are explicit so cloning and
 -- prefab instantiation can remap them without reflecting over Haskell values.
@@ -66,7 +66,7 @@ spawn n w = (e, w { nextId = e+1, names = IM.insert e n (names w), transforms = 
   where e = nextId w
 
 spawnMesh :: String -> String -> World -> (Entity, World)
-spawnMesh n g w = (e, w' { meshes = IM.insert e (Mesh g "") (meshes w'), materials = IM.insert e defaultMaterial (materials w') })
+spawnMesh n g w = (e, w' { meshes = IM.insert e (Mesh g "" False) (meshes w'), materials = IM.insert e defaultMaterial (materials w') })
   where (e,w') = spawn n w
 
 destroy :: Entity -> World -> World

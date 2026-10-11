@@ -3,6 +3,7 @@ module Unholy.Project where
 import Unholy.Types
 import Unholy.Transform (resolveWorld)
 import Unholy.JSON
+import qualified Unholy.Renderer.GLTF as GLTF
 import qualified Data.IntMap.Strict as IM
 import qualified Data.Map.Strict as M
 import Control.Monad (forM, forM_, unless, when, foldM)
@@ -30,7 +31,7 @@ projectJSON p = Object
     w=world p; c=camera p; env=environment p;settings=physicsSettings p
     int=Number . fromIntegral; num=Number . realToFrac; vec=Array . map num . vlist
     entity (e,n) = Object $ [("id",int e),("name",String n),("transform",trans (transforms w IM.! e))]
-      ++ optional "mesh" (\m -> Object [("geometry",String (geometry m)),("texture",String (texture m))]) (IM.lookup e (meshes w))
+      ++ optional "mesh" (\m -> Object [("geometry",String (geometry m)),("texture",String (texture m)),("importMaterials",Boolean (useImportedMaterials m))]) (IM.lookup e (meshes w))
       ++ optional "material" mat (IM.lookup e (materials w))
       ++ optional "script" String (IM.lookup e (scripts w))
       ++ optional "authored" (Object . map (\(key,fields)->(key,Object [(k,fieldJSON value) | (k,value)<-M.toAscList fields])) . M.toAscList) (IM.lookup e (authored w))
@@ -90,7 +91,7 @@ decodeProject input = do
       tr <- Transform <$> vfield "position" t <*> vfield "rotation" t <*> vfield "scale" t
       fields <- object j
       let optional k decode = traverse decode (lookup k fields)
-      m <- optional "mesh" (\o -> Mesh <$> (field "geometry" o >>= string) <*> (field "texture" o >>= string))
+      m <- optional "mesh" (\o -> Mesh <$> (field "geometry" o >>= string) <*> (field "texture" o >>= string) <*> maybe (Right False) boolean (lookup "importMaterials" =<< either (const Nothing) Just (object o)))
       mat <- optional "material" (\o -> Material <$> vfield "albedo" o <*> floatField "metallic" o <*> floatField "roughness" o <*> floatField "emission" o)
       script <- optional "script" string
       gameData <- optional "authored" (\o->object o >>= mapM (\(key,value)->do
@@ -156,7 +157,21 @@ saveProject path p = ioEither $ do
   renameFile temp path
 
 checkAssets :: FilePath -> Project -> IO [String]
-checkAssets root p = checkAssetFiles root (assetReferences (world p))
+checkAssets root p = do
+  direct<-checkAssetFiles root (assetReferences (world p))
+  if not (null direct) then pure direct else do
+    discovered<-try (expandedAssetReferences root (world p))
+    case discovered of
+      Left err->pure [show (err::IOException)]
+      Right refs->checkAssetFiles root refs
+
+expandedAssetReferences :: FilePath -> World -> IO [FilePath]
+expandedAssetReferences root w=fmap (nub . concat) $ forM (assetReferences w) $ \ref->do
+  when (any (\mesh->geometry mesh==ref && useImportedMaterials mesh) (IM.elems (meshes w))) $ do
+    _<-GLTF.loadMaterials (root </> ref)
+    pure ()
+  dependencies<-GLTF.assetDependencies (root </> ref)
+  pure (ref:map (takeDirectory ref </>) dependencies)
 
 checkAssetFiles :: FilePath -> [FilePath] -> IO [String]
 checkAssetFiles root refs = do
@@ -212,7 +227,10 @@ buildProject = buildProjectWithAssets []
 buildProjectWithAssets :: [FilePath] -> FilePath -> FilePath -> Project -> IO (Either String FilePath)
 buildProjectWithAssets extra root engineAssets p = ioEither $ do
   either (ioError . userError) pure (validateProject p)
-  let refs=nub (assetReferences (world p)++extra)
+  invalid<-checkAssets root p
+  unless (null invalid) (ioError (userError (unlines invalid)))
+  importedRefs<-expandedAssetReferences root (world p)
+  let refs=nub (importedRefs++extra)
   missing<-checkAssetFiles root refs
   unless (null missing) (ioError (userError (unlines missing)))
   let output=root </> "dist" </> slug (projectName p)
@@ -239,7 +257,7 @@ buildProjectWithAssets extra root engineAssets p = ioEither $ do
   when (os=="darwin") (bundleMacLibraries staging)
   staged<-loadProject (staging </> projectFile)
   either (ioError.userError) (either (ioError.userError) pure . validateProject) staged
-  stagedMissing<-checkAssetFiles staging refs
+  stagedMissing<- (++) <$> checkAssetFiles staging refs <*> checkAssets staging p
   unless (null stagedMissing) (ioError (userError (unlines stagedMissing)))
   old<-doesDirectoryExist output
   let backup=output++".previous"

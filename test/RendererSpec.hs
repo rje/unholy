@@ -11,6 +11,8 @@ import qualified Unholy.Renderer as R
 import qualified Unholy.Renderer.GL as G
 import qualified Unholy.Renderer.Camera as C
 import qualified Unholy.Renderer.Assets as A
+import qualified Unholy.Renderer.GLTF as F
+import qualified Linear as L
 import qualified Data.Map.Strict as M
 import qualified Data.IntMap.Strict as IM
 import qualified Data.Vector.Storable as VS
@@ -154,6 +156,7 @@ checks window r = do
     A.deleteModel imported
     forM_ importedTextures $ \tex -> glIsTexture tex >>= assert "imported texture leaked" . (==GL_FALSE)
   pass "imported material textures are copied, retained and released by Haskell"
+  importedMaterials window r rect
 
   result<-newEmptyMVar
   _<-forkIO $ do
@@ -168,7 +171,7 @@ checks window r = do
   let cam=camera fixture
       mouse=C.Mouse 550 310 0 0 0 False False True True
       ray=C.screenRay rect cam mouse
-  draws<-mapM (\(e,t,m,mat)->do model<-R.getModel r (geometry m);pure (R.Draw e model (C.modelMatrix t (A.importTransform model)) mat (R.whiteTexture r))) (renderables (world fixture))
+  draws<-mapM (\(e,t,m,mat)->do model<-R.getModel r (geometry m);pure (R.Draw e model (C.modelMatrix t (A.importTransform model)) mat (R.whiteTexture r) False)) (renderables (world fixture))
   assert "nearest visible mesh was not picked" (R.pick ray draws Nothing==Just 2)
   pass "editor picking intersects imported geometry and selects the nearest entity"
 
@@ -213,3 +216,63 @@ checks window r = do
   R.close r
   G.checkGL "Idempotent renderer disposal"
   pass "renderer shutdown releases its GPU resources before window destruction"
+
+importedMaterials :: N.Window -> R.Renderer -> (Float,Float,Float,Float) -> IO ()
+importedMaterials window r rect=do
+  let path="./projects/material-gallery/assets/cards.gltf"
+      (e,w)=spawnMesh "Imported cards" "projects/material-gallery/assets/cards.gltf" emptyWorld
+      authored=w {meshes=IM.adjust (\m->m {useImportedMaterials=True}) e (meshes w)}
+      scene=(emptyProject "glTF") {world=authored,environment=defaultEnvironment {sunPower=0,ambient=1,exposure=1,fogDensity=0,sunShadows=False}}
+      card i p=p {camera=Camera (V3 ((fromIntegral i-2.5)*2.4) 0 6) (V3 ((fromIntegral i-2.5)*2.4) 0 0) 45}
+      at i p=render window (card (i::Int) p) rect False >> pixelAtCenter r
+      near a b=abs (a-b)<0.00001
+  loaded<-R.getModel r path
+  let infos=[A.materialInfo m | mesh<-A.modelMeshes loaded,Just m<-[A.importedMaterial mesh]]
+      textures=concatMap A.meshTextures (A.modelMeshes loaded)
+  assert "Submesh material count" (length infos==6)
+  assert "Float-only glTF factors lost or quantized" (near (F.metalFactor (head infos)) 0.1 && near (F.roughFactor (head infos)) 0.24 && F.baseFactor (head infos)==L.V3 0.65 0.035 0.06)
+  forM_ textures $ \tex->glIsTexture tex >>= assert "Haskell texture did not survive importer release" . (==GL_TRUE)
+  let maps=A.materialTextures (maybe (error "Missing material") id (A.importedMaterial (A.modelMeshes loaded!!2)))
+  G.preservingState $ \_->do
+    forM_ [(0,GL_SRGB8_ALPHA8),(2,GL_RGBA8),(3,GL_RGBA8)] $ \(slot,expected)->do
+      glBindTexture GL_TEXTURE_2D (maybe 0 id (maps!!slot))
+      actual<-alloca $ \out->glGetTexLevelParameteriv GL_TEXTURE_2D 0 GL_TEXTURE_INTERNAL_FORMAT out >> peek out
+      assert "Material texture colorspace incorrect" (actual==fromIntegral expected)
+    forM_ [(2,20),(3,200)] $ \(slot,expected)->do
+      glBindTexture GL_TEXTURE_2D (maybe 0 id (maps!!slot))
+      allocaArray (64*64*4) $ \out->do
+        glGetTexImage GL_TEXTURE_2D 0 GL_RGBA GL_UNSIGNED_BYTE out
+        value<-peek out :: IO Word8
+        assert "Packed metallic/roughness channels swapped or gamma decoded" (value==expected)
+  red<-at 0 scene;blue<-at 1 scene
+  assert ("Submesh GPU colors failed "++show (red,blue)) (red!!0>red!!2+35 && blue!!2>blue!!0+35)
+  actual<-at 5 scene
+  let linear=((192/255+0.055)/1.055)**2.4 :: Double
+      expected factor=let x=linear*factor*0.5;m=(x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14) in round (max 0 (min 1 m)**(1/2.2)*255)::Int
+  assert ("sRGB must decode before linear factor multiplication "++show actual) (and (zipWith (\got wanted->abs (fromIntegral got-wanted)<=3) (take 3 actual) (map expected [0.3,0.12,0.65])))
+  let lit=scene {environment=(environment scene) {sunPower=3,ambient=0.1}}
+  normal<-at 3 lit
+  modifyIORef' (R.meshCache r) (M.adjust (\model->model {A.modelMeshes=map (\mesh->mesh {A.importedMaterial=fmap (\m->m {A.materialInfo=(A.materialInfo m) {F.normalScale=0}}) (A.importedMaterial mesh)}) (A.modelMeshes model)}) path)
+  flat<-at 3 lit
+  assert ("Directional normal map did not affect real GPU pixels "++show (normal,flat)) (maximum (zipWith (\a b->abs (fromIntegral a-fromIntegral b)::Int) normal flat)>10)
+  let variant name=lit {world=authored {meshes=IM.adjust (\m->m {geometry="projects/material-gallery/assets/"++name++".gltf"}) e (meshes authored)}}
+  mirrored<-at 3 (variant "normal-mirror")
+  degenerate<-at 3 (variant "normal-degenerate")
+  assert ("Mirrored UV normal handedness lost "++show (normal,mirrored)) (maximum (zipWith (\a b->fromIntegral a-fromIntegral b::Int) normal mirrored)>20)
+  assert "Degenerate UVs must fall back to the geometric normal" (maximum (zipWith (\a b->abs (fromIntegral a-fromIntegral b)::Int) flat degenerate)<=2)
+  let override=scene {world=authored {meshes=IM.adjust (\m->m {useImportedMaterials=False}) e (meshes authored),materials=IM.insert e (Material (V3 0.02 0.9 0.02) 0 0.4 0) (materials authored)}}
+  overridden<-at 0 override
+  assert "Explicit entity override lost" (overridden!!1>overridden!!0+50 && overridden!!1>overridden!!2+50)
+  saved<-saveProject "test-output/material-override.hj.json" override
+  assert "Override save failed" (saved==Right ())
+  reopened<-loadProject "test-output/material-override.hj.json"
+  assert "Override policy did not round-trip" (reopened==Right override)
+  N.unloadAssets window
+  forM_ textures $ \tex->glIsTexture tex >>= assert "Imported material texture leaked" . (==GL_FALSE)
+  forM_ [path,"projects/material-gallery/assets/cards.glb"] $ \file->do
+    again<-R.getModel r file
+    assert "Repeated import/GLB material metadata failed" (length (A.modelMeshes again)==6)
+    let owned=concatMap A.meshTextures (A.modelMeshes again)
+    N.unloadAssets window
+    forM_ owned $ \tex->glIsTexture tex >>= assert "Repeated import texture leaked" . (==GL_FALSE)
+  pass "static glTF slots, float factors, sRGB/data maps, normal pixels, override persistence and GPU lifetime"

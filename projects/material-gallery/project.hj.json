@@ -1,0 +1,403 @@
+{
+  "camera": {
+    "eye": [
+      13,
+      10,
+      16
+    ],
+    "target": [
+      0,
+      1,
+      0
+    ],
+    "fov": 45
+  },
+  "entities": [
+    {
+      "id": 1,
+      "name": "Six imported material slots",
+      "transform": {
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "mesh": {
+        "geometry": "assets/reliquaries.gltf",
+        "texture": "",
+        "importMaterials": true
+      },
+      "material": {
+        "albedo": [
+          0.72,
+          0.78,
+          0.85
+        ],
+        "metallic": 0,
+        "roughness": 0.4,
+        "emission": 0
+      }
+    },
+    {
+      "id": 2,
+      "name": "Gallery floor",
+      "transform": {
+        "position": [
+          0,
+          -0.3,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          15,
+          0.6,
+          13
+        ]
+      },
+      "mesh": {
+        "geometry": "cube",
+        "texture": "",
+        "importMaterials": false
+      },
+      "material": {
+        "albedo": [
+          0.07,
+          0.09,
+          0.13
+        ],
+        "metallic": 0.3,
+        "roughness": 0.4,
+        "emission": 0
+      }
+    },
+    {
+      "id": 3,
+      "name": "Factor-only ruby",
+      "transform": {
+        "position": [
+          -3.2,
+          0.3,
+          -2.6
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2,
+          0.6,
+          2
+        ]
+      },
+      "mesh": {
+        "geometry": "cylinder",
+        "texture": "",
+        "importMaterials": false
+      },
+      "material": {
+        "albedo": [
+          0.22,
+          0.25,
+          0.29
+        ],
+        "metallic": 0.6,
+        "roughness": 0.23,
+        "emission": 0
+      }
+    },
+    {
+      "id": 4,
+      "name": "Factor-only cobalt",
+      "transform": {
+        "position": [
+          0.0,
+          0.3,
+          -2.6
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2,
+          0.6,
+          2
+        ]
+      },
+      "mesh": {
+        "geometry": "cylinder",
+        "texture": "",
+        "importMaterials": false
+      },
+      "material": {
+        "albedo": [
+          0.22,
+          0.25,
+          0.29
+        ],
+        "metallic": 0.6,
+        "roughness": 0.23,
+        "emission": 0
+      }
+    },
+    {
+      "id": 5,
+      "name": "Patterned bronze",
+      "transform": {
+        "position": [
+          3.2,
+          0.3,
+          -2.6
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2,
+          0.6,
+          2
+        ]
+      },
+      "mesh": {
+        "geometry": "cylinder",
+        "texture": "",
+        "importMaterials": false
+      },
+      "material": {
+        "albedo": [
+          0.22,
+          0.25,
+          0.29
+        ],
+        "metallic": 0.6,
+        "roughness": 0.23,
+        "emission": 0
+      }
+    },
+    {
+      "id": 6,
+      "name": "Ridged silver",
+      "transform": {
+        "position": [
+          -3.2,
+          0.3,
+          2.6
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2,
+          0.6,
+          2
+        ]
+      },
+      "mesh": {
+        "geometry": "cylinder",
+        "texture": "",
+        "importMaterials": false
+      },
+      "material": {
+        "albedo": [
+          0.22,
+          0.25,
+          0.29
+        ],
+        "metallic": 0.6,
+        "roughness": 0.23,
+        "emission": 0
+      }
+    },
+    {
+      "id": 7,
+      "name": "Jade emission",
+      "transform": {
+        "position": [
+          0.0,
+          0.3,
+          2.6
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2,
+          0.6,
+          2
+        ]
+      },
+      "mesh": {
+        "geometry": "cylinder",
+        "texture": "",
+        "importMaterials": false
+      },
+      "material": {
+        "albedo": [
+          0.22,
+          0.25,
+          0.29
+        ],
+        "metallic": 0.6,
+        "roughness": 0.23,
+        "emission": 0
+      }
+    },
+    {
+      "id": 8,
+      "name": "Linear factor + sRGB gray",
+      "transform": {
+        "position": [
+          3.2,
+          0.3,
+          2.6
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          2,
+          0.6,
+          2
+        ]
+      },
+      "mesh": {
+        "geometry": "cylinder",
+        "texture": "",
+        "importMaterials": false
+      },
+      "material": {
+        "albedo": [
+          0.22,
+          0.25,
+          0.29
+        ],
+        "metallic": 0.6,
+        "roughness": 0.23,
+        "emission": 0
+      }
+    },
+    {
+      "id": 9,
+      "name": "Gallery fill",
+      "transform": {
+        "position": [
+          4,
+          6,
+          6
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "light": {
+        "color": [
+          0.65,
+          0.8,
+          1
+        ],
+        "intensity": 120
+      }
+    },
+    {
+      "id": 10,
+      "name": "Gallery fill",
+      "transform": {
+        "position": [
+          -4,
+          5,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "light": {
+        "color": [
+          1,
+          0.8,
+          0.6
+        ],
+        "intensity": 100
+      }
+    }
+  ],
+  "environment": {
+    "ambient": 0.27,
+    "exposure": 1,
+    "fogDensity": 0.008,
+    "skyBottom": [
+      0.15000000596046448,
+      0.23999999463558197,
+      0.3199999928474426
+    ],
+    "skyTop": [
+      0.029999999329447746,
+      0.05999999865889549,
+      0.14000000059604645
+    ],
+    "sunColor": [
+      1,
+      0.9200000166893005,
+      0.8199999928474426
+    ],
+    "sunDirection": [
+      -0.5,
+      -1,
+      -0.4
+    ],
+    "sunPower": 3,
+    "sunShadows": true
+  },
+  "haskellGame": null,
+  "name": "Material Gallery",
+  "nextId": 11,
+  "physics": {
+    "gravity": [
+      0,
+      -18,
+      0
+    ],
+    "supportDistance": 0.02500000037252903,
+    "supportNormal": 0.44999998807907104
+  },
+  "schemaVersion": 2
+}

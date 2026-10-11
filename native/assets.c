@@ -40,9 +40,12 @@ void *hj_asset_image(const char *path,int *size) {
 }
 void *hj_asset_pixels(void *p) {return ((Image *)p)->data;}
 void hj_asset_image_free(void *p) {if(p) {UnloadImage(*(Image *)p);free(p);} }
-void *hj_asset_mesh_image(void *p,int index,int *size) {
+int hj_asset_material_index(void *p,int index) { return ((Model *)p)->meshMaterial[index]; }
+void *hj_asset_mesh_image(void *p,int index,int slot,int *size) {
     Model *m=p;
-    Texture2D t=m->materials[m->meshMaterial[index]].maps[MATERIAL_MAP_ALBEDO].texture;
+    const int maps[]={MATERIAL_MAP_ALBEDO,MATERIAL_MAP_NORMAL,MATERIAL_MAP_METALNESS,MATERIAL_MAP_ROUGHNESS,MATERIAL_MAP_EMISSION,MATERIAL_MAP_OCCLUSION};
+    if(slot<0||slot>=6) return NULL;
+    Texture2D t=m->materials[m->meshMaterial[index]].maps[maps[slot]].texture;
     if(!t.id||t.id==rlGetTextureIdDefault()) return NULL;
     Image *image=calloc(1,sizeof(Image));
     if(!image) return NULL;

@@ -3,7 +3,7 @@
 A small native Haskell 3D engine with a Unity-inspired editor, PBR materials,
 Lua scripting, a typed ECS, Bullet physics, and load/save/build/play projects.
 Named in honor of the original game jam. This is an experimental engine,
-with four playable/inspectable projects and a small native desktop editor.
+with six playable/inspectable projects and a small native desktop editor.
 
 ## Run on macOS
 
@@ -15,7 +15,8 @@ open build/Unholy.app
 ```
 
 Or use `make run` / `./build/unholy`. The default project is **Material Lab**.
-Click **Load** to switch to **Marble Run**, **Knockdown**, or **Pulse Courier**, then **Play**.
+Click **Load** to select a project, then **Play**. **More projects** pages through
+the samples, including Circuit Breaker and Material Gallery.
 
 ```sh
 ./build/unholy projects/marble-run/project.hj.json
@@ -79,6 +80,7 @@ during play. Restart play after modifying a Lua source file to reload it.
 | Project | What to do | Systems shown |
 | --- | --- | --- |
 | Material Lab | Inspect the two rows of spheres and animated ring | GGX metal/roughness, point lights, emissive materials, Lua animation |
+| Material Gallery | Inspect six sculpted reliquaries | Static glTF submesh material slots, float factors, sRGB color textures, packed metallic/roughness source, normal maps, explicit entity overrides |
 | Marble Run / Aether Gardens | Follow the blue lights, jump the gap, reach the checkpoint, cross the sliding bridge to the gold arch; ride the left lift to the bonus balcony | Textured beveled decks and suspended gardens, sun shadows/fog, kinematic platforms and rotating sweeper, parented platform assemblies, trigger checkpoints/finish, collectible gem prefabs, runtime crate spawning/destruction, collision sounds and ambience, win/restart |
 | Pulse Courier | Roll through three orange relay cores and deliver to the green portal; E dashes | Independently packaged Haskell game, typed custom components and systems, trigger scoring, Haskell camera/audio, kinematic shuttles, all Haskell primitive geometry |
 | Circuit Breaker | Roll onto blue pads, press E to open linked doors, reach the green portal | Persistent typed Haskell configuration, Game inspector, remapped entity links, prefab assemblies, Bullet triggers and moving doors |
@@ -259,8 +261,27 @@ PBR uses a Cook-Torrance GGX BRDF, Schlick Fresnel, Smith geometry, an
 energy-conserving diffuse term, directional sun plus up to eight point lights,
 ACES tone mapping and gamma conversion, an optional 2048-pixel directional
 shadow map with 3x3 filtering, and distance fog. Ambient light is a simple approximation.
-This version has **no environment-map IBL, normal maps, packed
-metal/roughness textures, skeletal animation or terrain**. Imported meshes are static; physics colliders are
+Static glTF/GLB imports retain per-submesh linear factors, base-color/emissive
+textures, normal scale, occlusion, and metallic/roughness maps. The importer splits
+the packed source's G/B channels; Haskell retains the resulting linear data maps.
+The inspector's **Imported slots / Entity override** button persists that policy.
+Existing scenes default to Entity override; glTF assets assigned in the editor use
+Imported slots. Entity override applies one material's factors to all submeshes
+and disables imported normal/data/emissive maps; a blank albedo path still uses
+the imported base texture. An explicit albedo path overrides that texture.
+
+The supported import subset is opaque, single-sided static triangles, UV0, no
+vertex colors or material extensions, repeat wrapping and linear mipmap filtering.
+Unsupported imported-material features fail check/Play/build with a diagnostic;
+an entity override can still use their static geometry. glTF buffers and images
+are included in checks and exports, including models outside `assets/`. External
+URIs must be local paths without parent traversal or URL escaping. Raylib visits
+all file nodes, so multi-scene selection is not supported. OBJ/IQM retain the
+earlier static import path. Imported factors follow the
+[glTF material specification](https://github.com/KhronosGroup/glTF/blob/main/specification/2.0/Specification.adoc#metallic-roughness-material).
+
+This version has **no environment-map IBL, skeletal animation or terrain**.
+Imported meshes are static; physics colliders are
 explicit box/sphere approximations, independent of mesh geometry. Nonuniform
 sphere scale uses the largest axis. Dynamic bodies must be assembly roots;
 children may be visual meshes or static/kinematic colliders. Parent transforms

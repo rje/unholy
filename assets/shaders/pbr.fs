@@ -8,6 +8,16 @@ uniform vec3 baseColor;
 uniform float metalness;
 uniform float roughness;
 uniform float emission;
+uniform int baseColorLinear;
+uniform sampler2D normalMap;
+uniform sampler2D metalMap;
+uniform sampler2D roughMap;
+uniform sampler2D emissiveMap;
+uniform sampler2D occlusionMap;
+uniform vec3 emissiveColor;
+uniform int useNormalMap;
+uniform float normalScale;
+uniform float occlusionStrength;
 uniform vec3 viewPos;
 uniform vec3 sunDirection;
 uniform vec3 sunColor;
@@ -24,6 +34,29 @@ uniform vec3 lightPosition[8];
 uniform vec3 lightColor[8];
 uniform float lightPower[8];
 const float PI = 3.14159265359;
+float surfaceRoughness;
+float surfaceMetalness;
+vec3 srgbToLinear(vec3 c) {
+    return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),step(vec3(0.04045),c));
+}
+vec3 mappedNormal(vec3 n) {
+    if(useNormalMap==0) return n;
+    vec3 dx=dFdx(worldPosition), dy=dFdy(worldPosition);
+    vec2 tx=dFdx(uv), ty=dFdy(uv);
+    float determinant=tx.x*ty.y-tx.y*ty.x;
+    if(abs(determinant)<0.00000001) return n;
+    vec3 tangent=(dx*ty.y-dy*tx.y)/determinant;
+    vec3 bitangent=(-dx*ty.x+dy*tx.x)/determinant;
+    tangent-=n*dot(n,tangent);
+    if(dot(tangent,tangent)<0.00000001) return n;
+    tangent=normalize(tangent);
+    float handedness=dot(cross(n,tangent),bitangent)<0.0?-1.0:1.0;
+    bitangent=normalize(cross(n,tangent))*handedness;
+    vec3 sampled=texture(normalMap,uv).xyz*2.0-1.0;
+    sampled.xy*=normalScale;
+    vec3 result=mat3(tangent,bitangent,n)*sampled;
+    return dot(result,result)>0.00000001?normalize(result):n;
+}
 vec3 fresnel(float cosTheta, vec3 f0) {
     return f0 + (1.0-f0)*pow(clamp(1.0-cosTheta,0.0,1.0),5.0);
 }
@@ -41,8 +74,8 @@ vec3 brdf(vec3 n, vec3 v, vec3 l, vec3 radiance, vec3 color, vec3 f0) {
     vec3 h=normalize(v+l);
     float nv=max(dot(n,v),0.0), nl=max(dot(n,l),0.0);
     vec3 f=fresnel(max(dot(h,v),0.0),f0);
-    vec3 spec=distribution(max(dot(n,h),0.0),roughness)*geometry(nv,roughness)*geometry(nl,roughness)*f/max(4.0*nv*nl,0.001);
-    vec3 diffuse=(1.0-f)*(1.0-metalness)*color/PI;
+    vec3 spec=distribution(max(dot(n,h),0.0),surfaceRoughness)*geometry(nv,surfaceRoughness)*geometry(nl,surfaceRoughness)*f/max(4.0*nv*nl,0.001);
+    vec3 diffuse=(1.0-f)*(1.0-surfaceMetalness)*color/PI;
     return (diffuse+spec)*radiance*nl;
 }
 vec3 aces(vec3 x) {
@@ -60,16 +93,19 @@ float sunlight(vec3 n) {
     return visibility/9.0;
 }
 void main() {
-    vec3 color=pow(texture(texture0,uv).rgb*baseColor,vec3(2.2));
-    vec3 n=normalize(worldNormal), v=normalize(viewPos-worldPosition);
-    vec3 f0=mix(vec3(0.04),color,metalness);
+    vec3 color=texture(texture0,uv).rgb*(baseColorLinear==1?baseColor:srgbToLinear(baseColor));
+    surfaceMetalness=clamp(metalness*texture(metalMap,uv).r,0.0,1.0);
+    surfaceRoughness=clamp(roughness*texture(roughMap,uv).r,0.04,1.0);
+    vec3 n=mappedNormal(normalize(worldNormal)), v=normalize(viewPos-worldPosition);
+    vec3 f0=mix(vec3(0.04),color,surfaceMetalness);
     vec3 result=brdf(n,v,normalize(-sunDirection),sunColor*sunPower*sunlight(n),color,f0);
     for(int i=0;i<lightCount;i++) {
         vec3 d=lightPosition[i]-worldPosition;
         result+=brdf(n,v,normalize(d),lightColor[i]*lightPower[i]/max(dot(d,d),0.1),color,f0);
     }
     // A simple ambient approximation; this initial renderer has no environment IBL.
-    result+=color*ambientPower*(0.5+0.5*max(n.y,0.0))*(1.0-metalness*0.6)+color*emission;
+    float occlusion=mix(1.0,texture(occlusionMap,uv).r,occlusionStrength);
+    result+=color*ambientPower*(0.5+0.5*max(n.y,0.0))*(1.0-surfaceMetalness*0.6)*occlusion+color*emission+texture(emissiveMap,uv).rgb*emissiveColor;
     vec3 mapped=pow(aces(result*exposure),vec3(1.0/2.2));
     float fog=1.0-exp(-fogDensity*length(viewPos-worldPosition));
     finalColor=vec4(mix(mapped,fogColor,fog),1.0);

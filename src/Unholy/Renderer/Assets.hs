@@ -2,19 +2,28 @@
 module Unholy.Renderer.Assets where
 
 import qualified Unholy.Renderer.Primitives as P
+import qualified Unholy.Renderer.GLTF as F
 import Unholy.Renderer.GL
 import Unholy.Renderer.Camera (Bounds, boundsOf)
 import Graphics.GL
 import Foreign
 import Foreign.C
-import Control.Exception (bracket, onException)
+import Control.Exception (bracket, onException,try,IOException)
 import Control.Monad (forM_, when, unless)
 import qualified Data.Vector.Storable as VS
 import Linear.Matrix (identity)
 import Linear (M44, V3(..), V4(..), transpose)
+import qualified Data.IntMap.Strict as IM
 
-data MeshData = MeshData { meshBuffer :: !Buffer, meshPositions :: !(VS.Vector (V3 Float)), meshIndices :: !(VS.Vector Word16), meshBounds :: !Bounds, importedTexture :: !(Maybe GLuint) }
-data ModelData = ModelData { modelMeshes :: ![MeshData], importTransform :: !(M44 Float), modelBounds :: !Bounds }
+data ImportedMaterial = ImportedMaterial { materialInfo :: !F.MaterialInfo, materialTextures :: ![Maybe GLuint] }
+data MeshData = MeshData { meshBuffer :: !Buffer, meshPositions :: !(VS.Vector (V3 Float)), meshIndices :: !(VS.Vector Word16), meshBounds :: !Bounds, importedMaterial :: !(Maybe ImportedMaterial) }
+importedTexture :: MeshData -> Maybe GLuint
+importedTexture mesh=importedMaterial mesh >>= textureSlot 0
+textureSlot :: Int -> ImportedMaterial -> Maybe GLuint
+textureSlot index material=case drop index (materialTextures material) of value:_->value;_->Nothing
+meshTextures :: MeshData -> [GLuint]
+meshTextures mesh=maybe [] (concatMap (maybe [] (:[])) . materialTextures) (importedMaterial mesh)
+data ModelData = ModelData { modelMeshes :: ![MeshData], importTransform :: !(M44 Float), modelBounds :: !Bounds, materialError :: !(Maybe String) }
 
 foreign import ccall unsafe "hj_asset_model" cModel :: CString -> IO (Ptr ())
 foreign import ccall unsafe "hj_asset_model_free" cFreeModel :: Ptr () -> IO ()
@@ -24,7 +33,8 @@ foreign import ccall unsafe "hj_asset_transform" cTransform :: Ptr () -> Ptr Flo
 foreign import ccall unsafe "hj_asset_image" cImage :: CString -> Ptr CInt -> IO (Ptr ())
 foreign import ccall unsafe "hj_asset_pixels" cPixels :: Ptr () -> IO (Ptr Word8)
 foreign import ccall unsafe "hj_asset_image_free" cFreeImage :: Ptr () -> IO ()
-foreign import ccall unsafe "hj_asset_mesh_image" cMeshImage :: Ptr () -> CInt -> Ptr CInt -> IO (Ptr ())
+foreign import ccall unsafe "hj_asset_material_index" cMaterialIndex :: Ptr () -> CInt -> IO CInt
+foreign import ccall unsafe "hj_asset_mesh_image" cMeshImage :: Ptr () -> CInt -> CInt -> Ptr CInt -> IO (Ptr ())
 
 loadModel :: FilePath -> IO ModelData
 loadModel path | Just cpu<-P.primitive path = do
@@ -32,9 +42,12 @@ loadModel path | Just cpu<-P.primitive path = do
       positions=VS.generate (VS.length raw `div` 8) (\i -> V3 (raw VS.! (i*8)) (raw VS.! (i*8+1)) (raw VS.! (i*8+2)))
       bounds=boundsOf positions
   gpu<-uploadBuffer raw (P.indices cpu)
-  pure (ModelData [MeshData gpu positions (P.indices cpu) bounds Nothing] identity bounds)
+  pure (ModelData [MeshData gpu positions (P.indices cpu) bounds Nothing] identity bounds Nothing)
 loadModel path = withCString path $ \name -> bracket (cModel name) cFreeModel $ \p -> do
   when (p==nullPtr) (ioError (userError ("Cannot import mesh: "++path)))
+  attempted<-try (F.loadMaterials path)
+  let metadata=either (const Nothing) id attempted
+      diagnostic=either (Just . show . (id :: IOException -> IOException)) (const Nothing) attempted
   transform<-allocaArray 16 $ \out -> do
     cTransform p out
     columns<-peekArray 16 out
@@ -44,16 +57,18 @@ loadModel path = withCString path $ \name -> bracket (cModel name) cFreeModel $ 
   count<-fromIntegral <$> cMeshCount p
   let loadAll []=pure []
       loadAll (i:is)=do
-        mesh<-loadMesh p i
+        slot<-fromIntegral <$> cMaterialIndex p (fromIntegral i)
+        let info=fmap (IM.findWithDefault F.defaultInfo slot) metadata
+        mesh<-loadMesh p i info
         rest<-loadAll is `onException` deleteMesh mesh
         pure (mesh:rest)
   meshes<-loadAll [0..count-1]
   unless (not (null meshes)) (ioError (userError ("Empty model: "++path)))
   let bounds=boundsOf (VS.fromList (concatMap (\m -> let (lo,hi)=meshBounds m in [lo,hi]) meshes))
-  pure (ModelData meshes transform bounds)
+  pure (ModelData meshes transform bounds diagnostic)
 
-loadMesh :: Ptr () -> Int -> IO MeshData
-loadMesh model index = allocaArray 2 $ \counts -> allocaArray 4 $ \arrays -> do
+loadMesh :: Ptr () -> Int -> Maybe F.MaterialInfo -> IO MeshData
+loadMesh model index info = allocaArray 2 $ \counts -> allocaArray 4 $ \arrays -> do
   valid<-cMesh model (fromIntegral index) counts arrays
   unless (valid/=0) (ioError (userError "Imported mesh has no vertices"))
   vertexCount<-fromIntegral <$> peekElemOff counts 0
@@ -75,15 +90,21 @@ loadMesh model index = allocaArray 2 $ \counts -> allocaArray 4 $ \arrays -> do
         else if component<5 then uvs VS.! (v*2+component-3)
         else normals VS.! (v*3+component-5)
   gpu<-uploadBuffer vertices indices
-  tex<-loadImportedTexture model index `onException` deleteBuffer gpu
-  pure (MeshData gpu positions indices (boundsOf positions) tex)
+  textures<-loadMaps [0..5] `onException` deleteBuffer gpu
+  pure (MeshData gpu positions indices (boundsOf positions) (Just (ImportedMaterial (maybe F.defaultInfo {F.metalFactor=0,F.roughFactor=0.4} id info) textures)))
+  where
+    loadMaps []=pure []
+    loadMaps (slot:rest)=do
+      tex<-loadImportedTexture model index slot
+      following<-loadMaps rest `onException` mapM_ (deleteObject glDeleteTextures) tex
+      pure (tex:following)
 
-loadImportedTexture :: Ptr () -> Int -> IO (Maybe GLuint)
-loadImportedTexture model index = allocaArray 2 $ \size -> bracket (cMeshImage model (fromIntegral index) size) cFreeImage $ \p ->
+loadImportedTexture :: Ptr () -> Int -> Int -> IO (Maybe GLuint)
+loadImportedTexture model index slot = allocaArray 2 $ \size -> bracket (cMeshImage model (fromIntegral index) (fromIntegral slot) size) cFreeImage $ \p ->
   if p==nullPtr then pure Nothing else do
     w<-fromIntegral <$> peekElemOff size 0
     h<-fromIntegral <$> peekElemOff size 1
-    Just <$> (cPixels p >>= newTexture w h)
+    Just <$> (cPixels p >>= newTextureWithColorSpace (slot `elem` [0,4]) w h)
 
 copyVector :: Storable a => Int -> Ptr a -> IO (VS.Vector a)
 copyVector n p = do
@@ -93,11 +114,11 @@ copyVector n p = do
 deleteModel :: ModelData -> IO ()
 deleteModel model = forM_ (modelMeshes model) deleteMesh
 deleteMesh :: MeshData -> IO ()
-deleteMesh mesh = deleteBuffer (meshBuffer mesh) >> mapM_ (deleteObject glDeleteTextures) (importedTexture mesh)
+deleteMesh mesh = deleteBuffer (meshBuffer mesh) >> mapM_ (deleteObject glDeleteTextures) (meshTextures mesh)
 
 loadTexture :: FilePath -> IO GLuint
 loadTexture path = withCString path $ \name -> allocaArray 2 $ \size -> bracket (cImage name size) cFreeImage $ \p -> do
   when (p==nullPtr) (ioError (userError ("Cannot decode texture: "++path)))
   w<-fromIntegral <$> peekElemOff size 0
   h<-fromIntegral <$> peekElemOff size 1
-  cPixels p >>= newTexture w h
+  cPixels p >>= newTextureWithColorSpace True w h

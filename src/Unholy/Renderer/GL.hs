@@ -22,6 +22,7 @@ deleteObject del ident = when (ident/=0) (with ident (del 1))
 
 uniformNames :: [String]
 uniformNames = ["mvp","matModel","matNormal","texture0","shadowMap","lightVP","baseColor","metalness","roughness","emission","viewPos","sunDirection","sunColor","sunPower","ambientPower","exposure","fogColor","fogDensity","useShadows","lightCount","skyTop","skyBottom","mode"]
+  ++ ["baseColorLinear","normalMap","metalMap","roughMap","emissiveMap","occlusionMap","emissiveColor","useNormalMap","normalScale","occlusionStrength"]
   ++ [field++"["++show i++"]" | i<-[0..7::Int],field<-["lightPosition","lightColor","lightPower"]]
 
 loadProgram :: FilePath -> FilePath -> IO Program
@@ -103,11 +104,13 @@ deleteBuffer Buffer{..} = do
   deleteObject glDeleteBuffers indexBuffer
 
 newTexture :: Int -> Int -> Ptr a -> IO GLuint
-newTexture w h pixels = bracketOnError (genObject glGenTextures) (deleteObject glDeleteTextures) $ \tex -> do
+newTexture = newTextureWithColorSpace False
+newTextureWithColorSpace :: Bool -> Int -> Int -> Ptr a -> IO GLuint
+newTextureWithColorSpace srgb w h pixels = bracketOnError (genObject glGenTextures) (deleteObject glDeleteTextures) $ \tex -> do
   glActiveTexture GL_TEXTURE0
   glBindTexture GL_TEXTURE_2D tex
   glPixelStorei GL_UNPACK_ALIGNMENT 1
-  glTexImage2D GL_TEXTURE_2D 0 (fromIntegral GL_RGBA8) (fromIntegral w) (fromIntegral h) 0 GL_RGBA GL_UNSIGNED_BYTE (castPtr pixels)
+  glTexImage2D GL_TEXTURE_2D 0 (fromIntegral (if srgb then GL_SRGB8_ALPHA8 else GL_RGBA8)) (fromIntegral w) (fromIntegral h) 0 GL_RGBA GL_UNSIGNED_BYTE (castPtr pixels)
   glGenerateMipmap GL_TEXTURE_2D
   glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MIN_FILTER (fromIntegral GL_LINEAR_MIPMAP_LINEAR)
   glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MAG_FILTER (fromIntegral GL_LINEAR)
@@ -150,7 +153,7 @@ bindTarget Target{..} = glBindFramebuffer GL_FRAMEBUFFER framebuffer >> glViewpo
 data GLState = GLState
   { savedDrawFbo :: !GLint, savedReadFbo :: !GLint, savedViewport :: !(V4 GLint)
   , savedProgram :: !GLint, savedVAO :: !GLint, savedVBO :: !GLint
-  , savedActiveTexture :: !GLint, savedTex0 :: !GLint, savedTex1 :: !GLint
+  , savedActiveTexture :: !GLint, savedTex0 :: !GLint, savedTex1 :: !GLint, savedOtherTextures :: ![GLint]
   , savedUnpack :: !GLint, savedPack :: !GLint, savedDepthFunc :: !GLint, savedCullFace :: !GLint
   , savedDepthMask :: !GLboolean, savedFlags :: ![(GLenum,GLboolean)]
   } deriving (Eq,Show)
@@ -169,6 +172,7 @@ captureState = do
   savedTex0<-getInt GL_TEXTURE_BINDING_2D
   glActiveTexture GL_TEXTURE1
   savedTex1<-getInt GL_TEXTURE_BINDING_2D
+  savedOtherTextures<-forM [2..6] $ \unit->glActiveTexture (GL_TEXTURE0+unit) >> getInt GL_TEXTURE_BINDING_2D
   glActiveTexture (fromIntegral savedActiveTexture)
   savedUnpack<-getInt GL_UNPACK_ALIGNMENT
   savedPack<-getInt GL_PACK_ALIGNMENT
@@ -190,6 +194,7 @@ restoreState GLState{..} = do
   glBindTexture GL_TEXTURE_2D (fromIntegral savedTex0)
   glActiveTexture GL_TEXTURE1
   glBindTexture GL_TEXTURE_2D (fromIntegral savedTex1)
+  forM_ (zip [2..6] savedOtherTextures) $ \(unit,tex)->glActiveTexture (GL_TEXTURE0+unit) >> glBindTexture GL_TEXTURE_2D (fromIntegral tex)
   glActiveTexture (fromIntegral savedActiveTexture)
   glPixelStorei GL_UNPACK_ALIGNMENT savedUnpack
   glPixelStorei GL_PACK_ALIGNMENT savedPack

@@ -9,6 +9,7 @@ import Unholy.Project (builtins)
 import Unholy.Renderer.GL
 import Unholy.Renderer.Camera
 import Unholy.Renderer.Assets
+import qualified Unholy.Renderer.GLTF as F
 import Graphics.GL
 import qualified Linear as L
 import qualified Data.Map.Strict as M
@@ -32,7 +33,7 @@ data Renderer = Renderer
   , gizmoMode :: !(IORef (Maybe Gizmo.Mode)), gizmoDrag :: !(IORef (Maybe Gizmo.Drag)), gizmoEdit :: !(IORef (Maybe Gizmo.Edit)), ringBuffers :: ![Buffer]
   , disposed :: !(IORef Bool)
   }
-data Draw = Draw { drawEntity :: !Entity, drawModel :: !ModelData, drawMatrix :: !(L.M44 Float), drawMaterial :: !Material, drawTexture :: !GLuint }
+data Draw = Draw { drawEntity :: !Entity, drawModel :: !ModelData, drawMatrix :: !(L.M44 Float), drawMaterial :: !Material, drawTexture :: !GLuint, drawImported :: !Bool }
 
 initialize :: FilePath -> IO Renderer
 initialize root = preservingState $ \_ ->
@@ -112,7 +113,9 @@ reportError :: Renderer -> IOException -> IO ()
 reportError r err = modifyIORef' (rendererErrors r) (show err:)
 
 getModel :: Renderer -> FilePath -> IO ModelData
-getModel r path = do
+getModel r=getModelFor r True
+getModelFor :: Renderer -> Bool -> FilePath -> IO ModelData
+getModelFor r importedPolicy path = do
   cached<-M.lookup path <$> readIORef (meshCache r)
   case cached of
     Just model->pure model
@@ -121,6 +124,7 @@ getModel r path = do
       model<-case imported of
         Right value->pure value
         Left err->reportError r err >> loadModel "cube"
+      when importedPolicy (forM_ (materialError model) (reportError r . userError))
       modifyIORef' (meshCache r) (M.insert path model)
       pure model
 getTexture :: Renderer -> FilePath -> IO GLuint
@@ -174,9 +178,9 @@ drawScene r mouse down snapping root project rect@(x,y,w,h) (screenW,screenH) ed
     writeIORef (gizmoDrag r) nextDrag
     writeIORef (gizmoEdit r) edited
     draws<-forM (renderables displayed) $ \(e,t,m,mat) -> do
-      model<-getModel r (if geometry m `elem` builtins then geometry m else root </> geometry m)
+      model<-getModelFor r (useImportedMaterials m) (if geometry m `elem` builtins then geometry m else root </> geometry m)
       tex<-getTexture r (if null (texture m) then "" else root </> texture m)
-      pure (Draw e model (modelMatrix t (importTransform model)) mat tex)
+      pure (Draw e model (modelMatrix t (importTransform model)) mat tex (useImportedMaterials m))
     viewport<-ensureViewport r renderW renderH
     glDisable GL_SCISSOR_TEST
     glDisable GL_BLEND
@@ -212,13 +216,24 @@ drawScene r mouse down snapping root project rect@(x,y,w,h) (screenW,screenH) ed
       matrixUniform shader "mvp" (vp L.!*! model)
       matrixUniform shader "matModel" model
       matrixUniform shader "matNormal" (L.transpose (L.inv44 model))
-      vectorUniform shader "baseColor" (toLinear (albedo mat))
-      floatUniform shader "metalness" (metallic mat)
-      floatUniform shader "roughness" (roughness mat)
-      floatUniform shader "emission" (emission mat)
-      glActiveTexture GL_TEXTURE0
       forM_ (modelMeshes (drawModel d)) $ \mesh -> do
-        let tex=if drawTexture d==whiteTexture r then maybe (whiteTexture r) id (importedTexture mesh) else drawTexture d
+        let source=if drawImported d then importedMaterial mesh else Nothing
+            info=maybe F.defaultInfo materialInfo source
+            slot i=maybe (whiteTexture r) id (source >>= textureSlot i)
+            tex=if drawTexture d==whiteTexture r then maybe (whiteTexture r) id (importedTexture mesh) else drawTexture d
+        intUniform shader "baseColorLinear" (if maybe False (const True) source then 1 else 0)
+        vectorUniform shader "baseColor" (maybe (toLinear (albedo mat)) (F.baseFactor . materialInfo) source)
+        floatUniform shader "metalness" (maybe (metallic mat) (F.metalFactor . materialInfo) source)
+        floatUniform shader "roughness" (maybe (roughness mat) (F.roughFactor . materialInfo) source)
+        floatUniform shader "emission" (if maybe False (const True) source then 0 else emission mat)
+        vectorUniform shader "emissiveColor" (maybe (L.V3 0 0 0) (F.emissiveFactor . materialInfo) source)
+        floatUniform shader "normalScale" (F.normalScale info)
+        floatUniform shader "occlusionStrength" (maybe 0 (F.occlusionStrength . materialInfo) source)
+        intUniform shader "useNormalMap" (if slot 1/=whiteTexture r then 1 else 0)
+        forM_ (zip [2..6] [1..5]) $ \(unit,i)->do
+          glActiveTexture (GL_TEXTURE0+unit)
+          glBindTexture GL_TEXTURE_2D (slot i)
+        glActiveTexture GL_TEXTURE0
         glBindTexture GL_TEXTURE_2D tex
         drawBuffer GL_TRIANGLES (meshBuffer mesh)
     when edit $ do
@@ -253,6 +268,7 @@ setEnvironment r cam env lightVP w = do
   matrixUniform shader "lightVP" lightVP
   intUniform shader "texture0" 0
   intUniform shader "shadowMap" 1
+  forM_ (zip ["normalMap","metalMap","roughMap","emissiveMap","occlusionMap"] [2..6]) $ \(name,unit)->intUniform shader name unit
   glActiveTexture GL_TEXTURE1
   glBindTexture GL_TEXTURE_2D (depthTexture (shadowTarget r))
   intUniform shader "lightCount" (length ls)
