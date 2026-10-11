@@ -11,4 +11,5 @@ test-output/
 __pycache__/
 *.pyc
 *.recovery
+*.blend1
 screenshot*.png

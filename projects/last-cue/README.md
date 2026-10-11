@@ -56,6 +56,7 @@ replays run at a fixed 60 Hz; these are gameplay and rendering checks, not FPS
 measurements or physical-controller qualification. Captures and logs are in
 `build/verification/last-cue/`.
 
-Original assets, generation prompts and historical research are recorded in
-[ART.md](ART.md). Regenerate meshes/audio with `python3 scripts/last-cue-art.py`
-and scene JSON with `cabal run last-cue -- --write-scenes projects/last-cue`.
+The original theatre kit and both GPU-skinned characters are authored in Blender.
+Editable `.blend` sources, materials, historical references and regeneration
+commands are in [ART.md](ART.md). Blender is required only to regenerate art;
+the checked-in exports load and build directly in Unholy.

@@ -330,28 +330,28 @@ scene level =
         defaultEnvironment
           { sunShadows = True,
             sunDirection = V3 (-0.3) (-1) (-0.4),
-            sunPower = 1.7,
-            ambient = 0.18,
+            sunColor = V3 1 0.86 0.70,
+            sunPower = 1.9,
+            ambient = 0.22,
             skyTop = V3 0.012 0.017 0.025,
             skyBottom = V3 0.03 0.025 0.035,
             fogDensity = 0.008,
             environmentMap = "assets/studio.hdr",
-            environmentIntensity = 0.25
+            environmentIntensity = 0.32
           }
     }
   where
     role key e = setComponent roleComponent e key
     add key shape pos size color body w =
       let (e, next) = spawnMesh key shape w
-       in (e, role key e next {transforms = IM.insert e (Transform pos (V3 0 0 0) size) (transforms next), materials = IM.insert e (Material color 0.25 0.55 0) (materials next), bodies = maybe (bodies next) (\collider -> IM.insert e collider (bodies next)) body})
-    wood e w = w {meshes = IM.adjust (\m -> m {texture = "assets/wood.png"}) e (meshes w)}
+       in (e, role key e next {transforms = IM.insert e (Transform pos (V3 0 0 0) size) (transforms next), meshes = IM.adjust (\m -> m {useImportedMaterials = take 7 shape == "assets/"}) e (meshes next), materials = IM.insert e (Material color 0.25 0.55 0) (materials next), bodies = maybe (bodies next) (\collider -> IM.insert e collider (bodies next)) body})
     cream = V3 0.72 0.58 0.38
     brass = V3 0.78 0.52 0.18
     blue = V3 0.15 0.23 0.30
-    (floorId, floorWorld) = add "Stage timber deck" "assets/deck.gltf" (V3 0 (-0.4) 0) (V3 18 0.8 26) (V3 0.8 0.66 0.5) (Just defaultBody) emptyWorld
-    (_, back) = add "Rear brick wall" "cube" (V3 0 4 (-14)) (V3 19 8 0.6) blue (Just defaultBody) (wood floorId floorWorld)
-    (_, left) = add "Left wing wall" "cube" (V3 (-9) 4 0) (V3 0.6 8 28) blue (Just defaultBody) back
-    (_, right) = add "Right wing wall" "cube" (V3 9 4 0) (V3 0.6 8 28) blue (Just defaultBody) left
+    (_, floorWorld) = add "Stage timber deck" "assets/deck.gltf" (V3 0 (-0.4) 0) (V3 18 0.8 26) (V3 0.8 0.66 0.5) (Just defaultBody) emptyWorld
+    (_, back) = add "Rear brick wall" "assets/wall.gltf" (V3 0 4 (-14)) (V3 19 8 0.6) blue (Just defaultBody) floorWorld
+    (_, left) = add "Left wing wall" "assets/wing-wall.gltf" (V3 (-9) 4 0) (V3 0.6 8 28) blue (Just defaultBody) back
+    (_, right) = add "Right wing wall" "assets/wing-wall.gltf" (V3 9 4 0) (V3 0.6 8 28) blue (Just defaultBody) left
     (player, playerWorld) = spawn "Stagehand capsule" right
     actorWorld = role "player" player playerWorld {transforms = IM.insert player identity {position = V3 0 1.05 9} (transforms playerWorld), bodies = IM.insert player defaultBody {bodyShape = Capsule, mass = 1, friction = 0.1, lockRotation = True} (bodies playerWorld)}
     (model, modelWorld) = add "visual" "assets/stagehand.gltf" (V3 0 1.05 9) (V3 1 1 1) cream Nothing actorWorld
@@ -360,24 +360,22 @@ scene level =
     (b, second) = add "cue-b" "assets/key.gltf" (V3 4 1 1) (V3 1 1 1) brass (Just defaultBody {trigger = True}) first
     glowing = second {materials = foldr (IM.adjust (\m -> m {emission = 0.3})) (materials second) [a, b]}
     (_, controlled) = add "winch" "assets/winch.gltf" (V3 0 0 (-4)) (V3 1 1 1) brass (Just defaultBody) glowing
-    (gateId, closedRaw) = add "gate" "cube" (V3 0 1.5 (-6)) (V3 5 3 0.4) (V3 0.65 0.30 0.25) (Just defaultBody {kinematic = True}) controlled
-    closed = closedRaw {meshes = IM.adjust (\m -> m {texture = "assets/velvet.png"}) gateId (meshes closedRaw)}
-    (liftId, platform) = add "lift" "cube" (V3 0 0.12 (-8)) (V3 4.4 0.24 3) cream (Just defaultBody {kinematic = True}) closed
-    (balconyId, balconyRaw) = add "Upper fly gallery" "cube" (V3 0 2.8 (-11.8)) (V3 16 0.4 4.6) cream (Just defaultBody) (wood liftId platform)
-    balcony = wood balconyId balconyRaw
-    (_, end) = add "exit" "cube" (V3 0 4 (-12.3)) (V3 3 2 1) (V3 0.18 0.38 0.34) (Just defaultBody {trigger = True}) balcony
+    (_, closed) = add "gate" "assets/gate.gltf" (V3 0 1.5 (-6)) (V3 5 3 0.4) (V3 0.65 0.30 0.25) (Just defaultBody {kinematic = True}) controlled
+    (_, platform) = add "lift" "assets/lift.gltf" (V3 0 0.12 (-8)) (V3 4.4 0.24 3) cream (Just defaultBody {kinematic = True}) closed
+    (_, balcony) = add "Upper fly gallery" "assets/gallery.gltf" (V3 0 2.8 (-11.8)) (V3 16 0.4 4.6) cream (Just defaultBody) platform
+    (_, end) = add "exit" "assets/exit.gltf" (V3 0 4 (-12.3)) (V3 3 2 1) (V3 0.18 0.38 0.34) (Just defaultBody {trigger = True}) balcony
     mark key pos w = let (e, next) = spawn key w in role key e next {transforms = IM.insert e identity {position = pos} (transforms next)}
     marked = mark (if level == "dock" then "act-one" else "act-two") (V3 0 0 0) (mark "entrance" (V3 0 1.05 9) (mark "checkpoint" (V3 0 1.05 (-3)) end))
     withEnemy =
       if level == "dock"
         then marked
         else
-          let (e, next) = add "enemy" "assets/stagehand.gltf" (V3 5 1.05 (-2)) (V3 1 1 1) (V3 0.85 0.15 0.12) (Just defaultBody {bodyShape = Capsule, kinematic = True}) marked
+          let (e, next) = add "enemy" "assets/performer.gltf" (V3 5 1.05 (-2)) (V3 1 1 1) (V3 0.85 0.15 0.12) (Just defaultBody {bodyShape = Capsule, kinematic = True}) marked
            in next {animators = IM.insert e defaultAnimator {animationClip = "walk"} (animators next)}
     scenery = foldl (\w (x, z) -> snd (add "Scenery flat" "assets/flat.gltf" (V3 x 0 z) (V3 1 1 1) cream (Just defaultBody {bodyShape = TriangleMesh}) w)) withEnemy [(-6, 0), (6, -5), (-6, -9)]
     props = foldl (\w (x, z) -> snd (add "Rigging pulley" "assets/pulley.gltf" (V3 x 5 z) (V3 1 1 1) brass Nothing w)) scenery [(x, z) | x <- [-6, -2, 2, 6], z <- [-12, -5, 3]]
     ropes = foldl (\w (x, z) -> snd (add "Suspension rope" "cylinder" (V3 x 0 z) (V3 0.055 8 0.055) cream Nothing w)) props [(x, z) | x <- [-7, -2.3, 2.3, 7], z <- [-12, -8, 0]]
-    curtains = foldl (\w (x, z) -> let (e, next) = add "Crimson house curtain" "assets/curtain.gltf" (V3 x 0 z) (V3 1 1 1) (V3 0.85 0.4 0.4) Nothing w in next {meshes = IM.adjust (\m -> m {texture = "assets/velvet.png"}) e (meshes next)}) ropes [(-7.8, -13.5), (7.8, -13.5), (-8.2, 11), (8.2, 11)]
+    curtains = foldl (\w (x, z) -> snd (add "Crimson house curtain" "assets/curtain.gltf" (V3 x 0 z) (V3 1 1 1) (V3 0.85 0.4 0.4) Nothing w)) ropes [(-7.8, -13.5), (7.8, -13.5), (-8.2, 11), (8.2, 11)]
     framed = snd (add "Proscenium arch" "assets/arch.gltf" (V3 0 0 (-13)) (V3 1 1 1) brass Nothing curtains)
     overhead = foldl (\w z -> snd (add "Overhead grid timber" "cube" (V3 0 8 z) (V3 18 0.24 0.22) cream Nothing w)) framed [-13, -8, -3, 2, 7, 12]
     dressed =
@@ -392,7 +390,8 @@ scene level =
         ( \w (x, z) ->
             let (e, next) = spawnMesh "Stage worklight" "sphere" w
                 color = if level == "flies" then V3 0.46 0.66 1 else V3 1 0.75 0.48
-             in next {transforms = IM.insert e identity {position = V3 x 5 z, scale = V3 0.28 0.28 0.28} (transforms next), materials = IM.insert e (Material color 0 0.3 4) (materials next), lights = IM.insert e (Light color 18) (lights next)}
+                lamp = next {transforms = IM.insert e identity {position = V3 x 4.8 z, scale = V3 0.28 0.10 0.28} (transforms next), materials = IM.insert e (Material color 0 0.3 4) (materials next), lights = IM.insert e (Light color 18) (lights next)}
+             in snd (add "Iron worklight housing" "assets/worklight.gltf" (V3 x 5 z) (V3 1 1 1) cream Nothing lamp)
         )
         dressed
         [(-5, 6), (5, -1), (-5, -9), (5, -12)]
