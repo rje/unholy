@@ -8,7 +8,12 @@ and the Pulse Courier, Circuit Breaker and Threshold gameplay tests. `make rende
 passes 21 groups in a real graphics/audio context. Editor replay checks cover
 failure recovery, authored component fields/links, gizmo undo/prefabs and
 imported material policy, animation configuration and finite terrain authoring.
-The sections below retain the earlier checkpoints
+Both shared suites now load all eight checked-in demo projects from
+`test/Samples.hs`, rather than only the original three. Feature Courtyard exposes
+independent animation phases, paused poses, HDR roughness, 128 shared columns
+and finite terrain through the normal Load/Play workflow. Its actual editor
+Load/Play/Stop/Build and relocated export captures live in
+`build/verification/demos/`. The sections below retain the earlier checkpoints
 and their measured evidence.
 
 macOS qualification uses Apple M4, GHC 9.14.1, raylib 6.0, Bullet 3.25 and

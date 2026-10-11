@@ -1,6 +1,7 @@
 module Main where
 
 import PhysicsSpec (nodeFixture)
+import Samples
 import Unholy.Asset.CPU (loadTriangles)
 import qualified Unholy.Input as I
 import qualified Data.IntSet as S
@@ -190,7 +191,7 @@ checks window r = do
   assert "nearest visible mesh was not picked" (R.pick ray draws Nothing==Just 2)
   pass "editor picking intersects imported geometry and selects the nearest entity"
 
-  forM_ ["material-lab","marble-run","knockdown"] $ \name -> do
+  forM_ sampleProjects $ \name -> do
     N.unloadAssets window
     p<-loadProject ("projects/"++name++"/project.hj.json") >>= either (ioError . userError) pure
     replicateM_ 2 $ do
@@ -201,7 +202,7 @@ checks window r = do
     err<-N.nativeError window
     assert (name++": "++err) (null err)
     N.screenshot window ("build/verification/haskell-renderer/check-"++name++".png")
-  pass "all three sample projects load and draw through the Haskell renderer"
+  pass ("all "++show (length sampleProjects)++" sample projects load and draw through the Haskell renderer")
 
   loadedModels<-readIORef (R.meshCache r)
   textures<-readIORef (R.textureCache r)

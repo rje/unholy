@@ -3,7 +3,7 @@
 A small native Haskell 3D engine with a Unity-inspired editor, PBR materials and HDR environment lighting,
 Lua scripting, a typed ECS, Bullet physics, and load/save/build/play projects.
 Named in honor of the original game jam. This is an experimental engine,
-with seven playable/inspectable projects and a small native desktop editor.
+with eight playable/inspectable projects and a small native desktop editor.
 
 ## Run on macOS
 
@@ -87,11 +87,18 @@ during play. Restart play after modifying a Lua source file to reload it.
 | --- | --- | --- |
 | Material Lab | Inspect the two rows of spheres and animated ring | GGX metal/roughness, point lights, emissive materials, Lua animation |
 | Material Gallery | Inspect six sculpted reliquaries | Static glTF submesh material slots, float factors, sRGB color textures, packed metallic/roughness source, normal maps, explicit entity overrides, HDR environment lighting |
+| [Feature Courtyard](projects/feature-courtyard/README.md) | Compare four animated travelers, edit terrain and inspect the roughness row / column grove | Independent animation phases and paused pose, HDR reflections, finite terrain/heightfield, 128 instanced columns, Lua sculpture |
 | Marble Run / Aether Gardens | Follow the blue lights, jump the gap, reach the checkpoint, cross the sliding bridge to the gold arch; ride the left lift to the bonus balcony | Textured beveled decks and suspended gardens, sun shadows/fog, kinematic platforms and rotating sweeper, parented platform assemblies, trigger checkpoints/finish, collectible gem prefabs, runtime crate spawning/destruction, collision sounds and ambience, win/restart |
 | Pulse Courier | Roll through three orange relay cores and deliver to the green portal; E dashes | Independently packaged Haskell game, typed custom components and systems, trigger scoring, Haskell camera/audio, kinematic shuttles, all Haskell primitive geometry |
 | Circuit Breaker | Roll onto blue pads, press E to open linked doors, reach the green portal | Persistent typed Haskell configuration, Game inspector, remapped entity links, prefab assemblies, Bullet triggers and moving doors |
 | Threshold | Collect three beacons, push through a block, climb the causeway, jump the raised threshold and reach the cyan arch | Haskell animated traveler, finite textured terrain, capsule controller, convex/triangle/heightfield collision, kinematic shuttle, gamepad input, HDR lighting, completion/reset |
 | Knockdown | Ram all eight orange towers with the steel ball | Dynamic box/sphere collisions, rolling and toppling, Lua scoring, material changes, win/restart |
+
+See the [feature-to-demo map](projects/README.md) for what to try. New visible
+features ship with a checked-in demo, instructions and a working editor/export
+path; an existing demo can be extended. The shared headless and graphics checks
+load all eight included projects. [Contributor guidance](AGENTS.md) keeps this
+requirement in the development workflow.
 
 All games use **WASD/arrows**, **Space** to jump/hop, and **R** to restart.
 A controller's left stick also moves; A/Cross jumps, X/Square acts and Start

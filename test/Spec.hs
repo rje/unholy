@@ -1,6 +1,7 @@
 module Main where
 
 import TerrainSpec
+import Samples
 import AnimationSpec
 import PhysicsSpec
 import LibrarySpec
@@ -69,7 +70,7 @@ main = do
       p<-load n
       missing<-checkAssets ("projects" </> n) p
       assert (n++": missing assets") (null missing)
-      assert (n++": JSON round trip") (decodeProject (encodeJSON (projectJSON p))==Right p)) ["material-lab","marble-run","knockdown"]
+      assert (n++": JSON round trip") (decodeProject (encodeJSON (projectJSON p))==Right p)) sampleProjects
     assert "reject schema mismatch" (either (const True) (const False) (decodeProject "{\"schemaVersion\":9}"))
     assert "reject outside asset paths" (assetPath "../private.lua"/=Right ())
   test "Move, rotate and scale gizmos: capture, release, snapping and bounds" gizmoTools
