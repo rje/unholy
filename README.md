@@ -389,20 +389,30 @@ blending/GPU skinning, terrain brushes/LOD/streaming, richer asset import and
 broader desktop platform qualification remain future work. Measurements and clean
 public-package qualification are in [the current verification report](docs/haskell-verification.md).
 
-The next priorities from the integration review are:
+The [Astra Haskell review](docs/haskell-review.md) records the current code
+assessment, a reproduced audio failure-path bug and the import/GPU prerequisites.
+The next priorities are:
 
-1. Finish viewport authoring: place prefabs on picked surfaces and add a bounded
+1. Conventional mesh import and GPU skeletal deformation. Consolidate the
+   existing cgltf-backed geometry/accessor path so mesh instances, skins and
+   materials have one validated ordering before GPU allocation. Qualify a
+   licensed character from a conventional glTF exporter and expose available
+   clips in the inspector. Haskell keeps clip sampling, hierarchy evaluation,
+   joint palettes and resource ownership; the material and shadow vertex shaders
+   deform shared bind-pose geometry. Use conservative animated bounds and
+   on-demand CPU picking, without full per-frame CPU skinning/vertex uploads.
+   Demonstrate independent characters in a checked-in project and verify the
+   editor and relocated export. This is planned work; the current draw path
+   still uses CPU skinning.
+2. Finish viewport authoring: place prefabs on picked surfaces and add a bounded
    terrain height brush with one undo entry per drag. Qualify a route assembled,
    sculpted, saved and played through the editor/export workflow.
-2. Qualify a licensed character from a conventional glTF exporter. Add only the
-   import features that asset needs and expose available clips in the inspector,
-   keeping pose evaluation and resource ownership in Haskell.
 3. Persist bindings for the existing keyboard/controller actions and turn the
    traveler toward movement. Qualify remapping, focus/disconnect and completion
    with both input paths.
 
-Profile a moving Threshold route before choosing further renderer or skinning
-optimization; the earlier component workloads do not measure their combined cost.
+Profile a moving animated route before choosing additional renderer optimization;
+the earlier component workloads do not measure its combined cost.
 
 ## Verification tools
 

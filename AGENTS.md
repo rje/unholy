@@ -18,3 +18,9 @@ fixture under `test/` or a disposable scene under `build/` does not replace a de
 
 Keep engine policy and systems in Haskell and reuse established native libraries
 for their existing roles. Do not create a new engine subsystem just for a demo.
+
+For the next mesh import and animation milestone, keep validated asset data,
+clip sampling, hierarchy evaluation and joint-palette management in Haskell.
+Drive rendered vertex deformation on the GPU in both the material and shadow
+passes. CPU deformation may serve as a reference or for on-demand picking;
+do not retain full per-frame CPU skinning and vertex uploads as the draw path.
