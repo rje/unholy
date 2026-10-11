@@ -12,6 +12,7 @@ import qualified Unholy.Renderer.GL as G
 import qualified Unholy.Renderer.Camera as C
 import qualified Unholy.Renderer.Assets as A
 import qualified Unholy.Renderer.GLTF as F
+import qualified Unholy.Renderer.IBL as B
 import qualified Linear as L
 import qualified Data.Map.Strict as M
 import qualified Data.IntMap.Strict as IM
@@ -76,6 +77,10 @@ checks window r = do
   assert "Haskell text focus must suppress game/editor shortcuts" (not suppressed && typed==[0,0,0,0,0])
   assert "Incomplete numeric editing buffer was lost" (incomplete=="-")
   N.clearFocus window
+  N.begin window
+  outsideRange<-N.slider window 10 100 100 "Preserve authored angle" 270 (-180) 180
+  N.end window
+  assert "Unedited slider clamped an authored value" (outsideRange==270)
   released<-N.key window 87 False
   assert "Clearing text focus must restore shortcuts" released
   writeIORef (N.uiState window) originalUI
@@ -103,6 +108,7 @@ checks window r = do
   blue<-pixelAtCenter r
   assert ("PBR draw/uniforms did not affect pixels: "++show (red,blue)) (fromIntegral (red!!0)>fromIntegral (red!!2)+(30::Int) && fromIntegral (blue!!2)>fromIntegral (blue!!0)+(30::Int))
   pass "direct mesh drawing and live PBR material changes affect GPU pixels"
+  environmentLighting window r rect
   scaling window r rect
   render window fixture rect False
 
@@ -215,7 +221,7 @@ checks window r = do
   glIsBuffer (R.instanceBuffer r) >>= assert "instance stream buffer leaked on close" . (==GL_FALSE)
   glIsFramebuffer (G.framebuffer viewport) >>= assert "viewport leaked on close" . (==GL_FALSE)
   glIsFramebuffer (G.framebuffer (R.shadowTarget r)) >>= assert "shadow framebuffer leaked on close" . (==GL_FALSE)
-  forM_ [R.pbrProgram r,R.shadowProgram r,R.screenProgram r,R.lineProgram r] $ \p -> glIsProgram (G.programId p) >>= assert "shader program leaked on close" . (==GL_FALSE)
+  forM_ [R.pbrProgram r,R.shadowProgram r,R.screenProgram r,R.lineProgram r,R.iblProgram r] $ \p -> glIsProgram (G.programId p) >>= assert "shader program leaked on close" . (==GL_FALSE)
   R.close r
   G.checkGL "Idempotent renderer disposal"
   pass "renderer shutdown releases its GPU resources before window destruction"
@@ -342,3 +348,81 @@ importedMaterials window r rect=do
     N.unloadAssets window
     forM_ owned $ \tex->glIsTexture tex >>= assert "Repeated import texture leaked" . (==GL_FALSE)
   pass "static glTF slots, float factors, sRGB/data maps, normal pixels, override persistence and GPU lifetime"
+
+-- Read linear convolution results, independent of tone mapping and screenshots.
+cubePixels :: GLuint -> Int -> Int -> Int -> IO (VS.Vector Float)
+cubePixels tex face level side=G.preservingState $ \_->do
+  glActiveTexture GL_TEXTURE0
+  glBindTexture GL_TEXTURE_CUBE_MAP tex
+  storage<-mallocForeignPtrArray (side*side*3)
+  withForeignPtr storage $ \p->glGetTexImage (GL_TEXTURE_CUBE_MAP_POSITIVE_X+fromIntegral face) (fromIntegral level) GL_RGB GL_FLOAT p
+  pure (VS.unsafeFromForeignPtr0 storage (side*side*3))
+
+environmentLighting :: N.Window -> R.Renderer -> (Float,Float,Float,Float) -> IO ()
+environmentLighting window r rect=do
+  decoded<-B.loadHDR "projects/material-gallery/assets/studio.hdr"
+  assert "Radiance decoder clipped values above one" (VS.maximum (B.hdrPixels decoded)>10)
+  let constant=B.HDR 64 32 (VS.generate (64*32*4) (\i->[2,0.4,0.1,1]!!(i `mod` 4)))
+  malformed<-try (B.generateIBL (R.iblProgram r) (R.screenBuffer r) (B.HDR 64 32 (VS.singleton 1))) :: IO (Either IOException B.IBL)
+  assert "Short HDR pixel buffer was accepted" (either (const True) (const False) malformed)
+  uniform<-B.generateIBL (R.iblProgram r) (R.screenBuffer r) constant
+  forM_ [0..5] $ \face->do
+    diffuse<-cubePixels (B.irradianceTexture uniform) face 0 32
+    assert "Constant environment irradiance normalization is incorrect" (VS.and (VS.imap (\i value->abs (value-[2,0.4,0.1]!!(i `mod` 3))<0.003) diffuse))
+    forM_ [0,3,6] $ \level->do
+      specular<-cubePixels (B.prefilterTexture uniform) face level (128 `div` (2^level))
+      assert "Constant environment specular convolution is incorrect" (VS.and (VS.imap (\i value->abs (value-[2,0.4,0.1]!!(i `mod` 3))<0.003) specular))
+  B.deleteIBL uniform
+  let directional=B.HDR 64 32 (VS.generate (64*32*4) (\i->
+        let (pixel,channel)=i `divMod` 4;(y,x)=pixel `divMod` 64
+            upper=if y<16 then [0.3,0.02,0.01] else [0.01,0.02,0.3]
+            patch=if abs (x-32)<5 && abs (y-9)<4 then 12 else 0
+        in if channel==3 then 1 else upper!!channel+patch))
+  maps<-B.generateIBL (R.iblProgram r) (R.screenBuffer r) directional
+  top<-cubePixels (B.irradianceTexture maps) 2 0 32
+  bottom<-cubePixels (B.irradianceTexture maps) 3 0 32
+  let meanChannel channel values=VS.sum (VS.generate (VS.length values `div` 3) (\i->values VS.! (i*3+channel)))/fromIntegral (VS.length values `div` 3)
+  assert "HDR top/bottom orientation flipped" (meanChannel 0 top>meanChannel 2 top+0.1 && meanChannel 2 bottom>meanChannel 0 bottom+0.1)
+  sharp<-mapM (\face->cubePixels (B.prefilterTexture maps) face 0 128) [0..5]
+  blurred<-mapM (\face->cubePixels (B.prefilterTexture maps) face 4 8) [0..5]
+  assert "GGX roughness did not broaden the bright reflection" (maximum (map VS.maximum blurred)<maximum (map VS.maximum sharp)*0.7)
+  B.deleteIBL maps
+  let lit=fixture {environment=defaultEnvironment {environmentMap="projects/material-gallery/assets/studio.hdr",environmentIntensity=1,sunPower=0,ambient=0,fogDensity=0,sunShadows=False}}
+      rotated p=p {environment=(environment p) {environmentRotation=90}}
+      delta a b=VS.sum (VS.zipWith (\x y->abs (fromIntegral x-fromIntegral y)::Int) a b)
+  render window lit rect False
+  reflection<-targetPixels r
+  interior<-pixelAtCenter r
+  assert ("IBL did not light the sphere interior: "++show interior) (sum (map (fromIntegral :: Word8 -> Int) (take 3 interior))>60)
+  retained<-readIORef (R.environmentCache r)
+  render window (rotated lit) rect False
+  rotatedReflection<-targetPixels r
+  rotatedInterior<-pixelAtCenter r
+  assert ("Sphere interior ignored environment rotation: "++show (interior,rotatedInterior)) (sum (zipWith (\a b->abs (fromIntegral a-fromIntegral b)::Int) (take 3 interior) (take 3 rotatedInterior))>5)
+  again<-readIORef (R.environmentCache r)
+  assert "Environment rotation rebuilt convolution textures" (retained==again)
+  assert "Rotating HDR did not change surface reflections" (delta reflection rotatedReflection>100000)
+  render window lit {world=emptyWorld} rect False
+  sky<-targetPixels r
+  render window (rotated lit) {world=emptyWorld} rect False
+  rotatedSky<-targetPixels r
+  assert "Rotating HDR did not change visible sky" (delta sky rotatedSky>100000)
+  render window lit {world=emptyWorld,camera=Camera (V3 3 0 0) (V3 0 0 0) 45} rect False
+  seam<-pixelAtCenter r
+  assert ("Equirectangular longitude seam leaked distant bright mip lighting: "++show seam) (maximum (take 3 seam)<100)
+  render window lit {environment=(environment lit) {environmentIntensity=0}} rect False
+  zero<-pixelAtCenter r
+  assert ("Zero environment intensity retained ambient light: "++show zero) (take 3 zero==[0,0,0])
+  N.begin window
+  R.flushUI
+  before<-G.captureState
+  _<-N.drawScene window "." lit rect False False Nothing
+  after<-G.captureState
+  N.end window
+  assert "HDR draw changed shared 2D/cubemap GL state" (before==after)
+  N.unloadAssets window
+  forM_ retained $ \(_,owned)->forM_ owned $ \value->forM_ [B.radianceTexture value,B.irradianceTexture value,B.prefilterTexture value,B.brdfTexture value] $ \tex->
+    glIsTexture tex >>= assert "Environment texture leaked on project switch" . (==GL_FALSE)
+  render window fixture rect False
+  pixelAtCenter r >>= assert "Gradient/ambient fallback broke" . (\pixel->pixel!!0>pixel!!2+30)
+  pass "float HDR, normalized irradiance, GGX roughness/orientation, rotating sky/reflections, cached uniforms and environment lifetime"

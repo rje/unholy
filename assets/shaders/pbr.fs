@@ -19,6 +19,17 @@ uniform int useNormalMap;
 uniform float normalScale;
 uniform float occlusionStrength;
 uniform vec3 viewPos;
+uniform int iblEnabled;
+uniform float environmentIntensity;
+uniform float environmentRotation;
+uniform float prefilterLevels;
+uniform samplerCube irradianceMap;
+uniform samplerCube prefilterMap;
+uniform sampler2D brdfLUT;
+vec3 environmentDirection(vec3 d) {
+    float c=cos(environmentRotation),s=sin(environmentRotation);
+    return vec3(c*d.x+s*d.z,d.y,-s*d.x+c*d.z);
+}
 uniform vec3 sunDirection;
 uniform vec3 sunColor;
 uniform float sunPower;
@@ -103,9 +114,17 @@ void main() {
         vec3 d=lightPosition[i]-worldPosition;
         result+=brdf(n,v,normalize(d),lightColor[i]*lightPower[i]/max(dot(d,d),0.1),color,f0);
     }
-    // A simple ambient approximation; this initial renderer has no environment IBL.
+
     float occlusion=mix(1.0,texture(occlusionMap,uv).r,occlusionStrength);
-    result+=color*ambientPower*(0.5+0.5*max(n.y,0.0))*(1.0-surfaceMetalness*0.6)*occlusion+color*emission+texture(emissiveMap,uv).rgb*emissiveColor;
+    if(iblEnabled==1) {
+        float nv=max(dot(n,v),0.0);
+        vec3 f=f0+(max(vec3(1.0-surfaceRoughness),f0)-f0)*pow(1.0-nv,5.0);
+        vec3 diffuse=(1.0-f)*(1.0-surfaceMetalness)*color*texture(irradianceMap,environmentDirection(n)).rgb;
+        vec3 reflected=textureLod(prefilterMap,environmentDirection(reflect(-v,n)),surfaceRoughness*prefilterLevels).rgb;
+        vec2 integrated=texture(brdfLUT,vec2(nv,surfaceRoughness)).rg;
+        result+=(diffuse+reflected*(f0*integrated.x+integrated.y))*environmentIntensity*occlusion;
+    } else result+=color*ambientPower*(0.5+0.5*max(n.y,0.0))*(1.0-surfaceMetalness*0.6)*occlusion;
+    result+=color*emission+texture(emissiveMap,uv).rgb*emissiveColor;
     vec3 mapped=pow(aces(result*exposure),vec3(1.0/2.2));
     float fog=1.0-exp(-fogDensity*length(viewPos-worldPosition));
     finalColor=vec4(mix(mapped,fogColor,fog),1.0);

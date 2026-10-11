@@ -17,7 +17,7 @@ projectReliability=do
       path=root </> projectFile
       valid=emptyProject "Reliability"
       invalids=[valid {camera=defaultCamera {fov=0}},valid {camera=defaultCamera {eye=V3 (0/0) 0 0}},
-        valid {environment=defaultEnvironment {sunColor=V3 (1/0) 0 0}},valid {physicsSettings=defaultPhysicsSettings {supportNormal=2}}]
+        valid {environment=defaultEnvironment {sunColor=V3 (1/0) 0 0}},valid {environment=defaultEnvironment {environmentMap="../escape.hdr"}},valid {environment=defaultEnvironment {environmentIntensity=(-1)}},valid {environment=defaultEnvironment {environmentMap="bad.png"}},valid {physicsSettings=defaultPhysicsSettings {supportNormal=2}}]
   createDirectoryIfMissing True root
   saved<-saveProject path valid
   assert "Valid project saves" (saved==Right ())
@@ -33,11 +33,12 @@ projectReliability=do
   writeFile (root </> "nested/game.dat") "game-owned data"
   createDirectoryIfMissing True (root </> "assets")
   writeFile (root </> "assets/runtime-only.dat") "Lua-owned data"
+  copyFile "projects/material-gallery/assets/studio.hdr" (root </> "studio.hdr")
   let (e,w)=spawn "Script" emptyWorld
-      p=valid {world=w {scripts=IM.singleton e "logic.lua"}}
+      p=valid {world=w {scripts=IM.singleton e "logic.lua"},environment=defaultEnvironment {environmentMap="studio.hdr",environmentIntensity=1.7,environmentRotation=72}}
   built<-buildProjectWithAssets ["nested/game.dat"] root "assets" p
   output<-either (ioError.userError) pure built
-  forM_ ["logic.lua","nested/game.dat","assets/runtime-only.dat"] $ \ref->do
+  forM_ ["logic.lua","nested/game.dat","assets/runtime-only.dat","studio.hdr"] $ \ref->do
     exists<-doesFileExist (output </> ref)
     assert ("Export contains "++ref) exists
   staged<-loadProject (output </> projectFile)
@@ -47,6 +48,15 @@ projectReliability=do
   failure<-buildProject root (root </> "bad-engine") p
   retained<-doesFileExist (output </> "retained.marker")
   assert "Staging failure retains previous export" (either (const True) (const False) failure && retained)
+  removeFile (root </> "studio.hdr")
+  missingEnvironment<-checkAssets root p
+  assert "Project-level HDR references are checked" (not (null missingEnvironment))
+  writeFile (root </> "studio.hdr") "not an HDR image"
+  corrupt<-checkAssets root p
+  assert "Corrupt HDR fails headless preflight" (not (null corrupt))
+  failedHDR<-buildProject root "assets" p
+  assert "Corrupt HDR cannot replace the previous export" (either (const True) (const False) failedHDR)
+  copyFile "projects/material-gallery/assets/studio.hdr" (root </> "studio.hdr")
   base<-canonicalizePath root
   createDirectoryLink (base </> "nested") (root </> "linked")
   errors<-checkAssetFiles root ["linked/game.dat"] `finally` removeDirectoryLink (root </> "linked")

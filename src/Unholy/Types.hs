@@ -27,7 +27,7 @@ data PhysicsSettings = PhysicsSettings { gravity :: !V3, supportNormal :: !Float
 defaultPhysicsSettings :: PhysicsSettings
 defaultPhysicsSettings = PhysicsSettings (V3 0 (-18) 0) 0.45 0.025
 data Camera = Camera { eye :: !V3, target :: !V3, fov :: !Float } deriving (Eq, Show, Read)
-data Environment = Environment { sunDirection :: !V3, sunColor :: !V3, sunPower :: !Float, ambient :: !Float, exposure :: !Float, skyTop :: !V3, skyBottom :: !V3, fogDensity :: !Float, sunShadows :: !Bool }
+data Environment = Environment { sunDirection :: !V3, sunColor :: !V3, sunPower :: !Float, ambient :: !Float, exposure :: !Float, skyTop :: !V3, skyBottom :: !V3, fogDensity :: !Float, sunShadows :: !Bool, environmentMap :: !FilePath, environmentIntensity :: !Float, environmentRotation :: !Float }
   deriving (Eq, Show, Read)
 
 -- Each component has its own typed store. An entity is a stable, monotonic ID.
@@ -55,7 +55,7 @@ defaultMaterial = Material (V3 0.72 0.78 0.85) 0 0.4 0
 defaultCamera :: Camera
 defaultCamera = Camera (V3 10 7 11) (V3 0 1 0) 45
 defaultEnvironment :: Environment
-defaultEnvironment = Environment (V3 (-0.5) (-1) (-0.4)) (V3 1 0.92 0.82) 3 0.12 1 (V3 0.067 0.098 0.145) (V3 0.125 0.173 0.208) 0 False
+defaultEnvironment = Environment (V3 (-0.5) (-1) (-0.4)) (V3 1 0.92 0.82) 3 0.12 1 (V3 0.067 0.098 0.145) (V3 0.125 0.173 0.208) 0 False "" 1 0
 emptyWorld :: World
 emptyWorld = World 1 IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty IM.empty
 emptyProject :: String -> Project

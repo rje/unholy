@@ -180,8 +180,10 @@ slider window x y w label value lo hi=do
   let val=printf "%.2f" value
   width<-withCString val (\p->realToFrac <$> cMeasure p 14)
   text window (x+w-width) y 14 val 0
-  _<-widget window
-  realToFrac <$> cSlider (f x) (f (y+21)) (f w) (f value) (f lo) (f hi)
+  state<-widget window
+  result<-realToFrac <$> cSlider (f x) (f (y+21)) (f w) (f value) (f lo) (f hi)
+  let editing=interaction state && I.leftDown (frameInput state) && inside (x,y+21,w,14) (I.pointer (frameInput state))
+  pure (if (value<lo || value>hi) && not editing then value else result)
 textbox :: Window -> Int -> Float -> Float -> Float -> Float -> String -> IO String
 textbox window ident x y w h source=do
   state<-widget window

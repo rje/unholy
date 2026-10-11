@@ -95,6 +95,6 @@ for i in range(6):
 for id,pos,color,power in [(9,[4,6,6],[0.65,0.8,1],120),(10,[-4,5,0],[1,0.8,0.6],100)]:
     baseline['entities'].append({'id':id,'name':'Gallery fill','transform':{'position':pos,'rotation':[0,0,0],'scale':[1,1,1]},'light':{'color':color,'intensity':power}})
 baseline['camera']={'eye':[13,10,16],'target':[0,1,0],'fov':45}
-baseline['environment'].update(sunDirection=[-0.5,-1,-0.4],sunPower=3,ambient=0.27,fogDensity=0.008,sunShadows=True)
+baseline['environment'].update(sunDirection=[-0.5,-1,-0.4],sunPower=3,ambient=0.27,fogDensity=0.008,sunShadows=True,environmentMap="assets/studio.hdr",environmentIntensity=0.8,environmentRotation=25)
 (OUT/'project.hj.json').write_text(json.dumps(baseline,indent=2)+'\n')
 print(OUT)

@@ -1,6 +1,6 @@
 # Unholy
 
-A small native Haskell 3D engine with a Unity-inspired editor, PBR materials,
+A small native Haskell 3D engine with a Unity-inspired editor, PBR materials and HDR environment lighting,
 Lua scripting, a typed ECS, Bullet physics, and load/save/build/play projects.
 Named in honor of the original game jam. This is an experimental engine,
 with six playable/inspectable projects and a small native desktop editor.
@@ -50,11 +50,11 @@ packages and exports. Linux desktop graphics and audio remain unqualified.
   `assets/` directory. **Refresh assets** rescans it and reloads GPU assets.
   Click a `.prefab.json` asset, then click the scene to place a new assembly on
   the ground plane (Esc cancels). **Save prefab** in the inspector saves the
-  selected entity and its descendants as a reusable project asset. Other asset
+  selected entity and its descendants as a reusable project asset. Click a `.hdr` asset to set the project environment. Other asset
   types attach to the selected entity. Mesh paths are project
   relative; built-ins are `cube`, `sphere`, `plane`, `cylinder` and `torus`.
 - **World / Camera**: edit the sun, ambient intensity, exposure, sky colors,
-  atmospheric fog, sun shadows and game camera;
+  atmospheric fog, sun shadows, HDR environment path/intensity/rotation and game camera;
   copy the editor camera to the project, edit gravity and toggle the grid.
 - **Play / Pause / Step**: Haskell game systems, Lua and Bullet run on a separate copy of the saved
   scene. Stop restores the editable scene. Step advances one 1/120 second tick.
@@ -218,6 +218,9 @@ tables they need. Small scalar FFI adapters call established native libraries:
   Its model importer creates temporary native GPU data; Haskell copies the CPU
   geometry and supported imported material textures, then immediately releases the native
   model. All retained 3D resources and draw calls belong to the Haskell renderer.
+- [stb_image](https://github.com/nothings/stb): pinned, CPU-only floating-point
+  Radiance HDR decoding independent of raylib build-time image format switches.
+  The renderer retains values above one and owns the lighting precomputation.
 - [raygui](https://github.com/raysan5/raygui): editor widgets, with a charcoal and
   blue theme. A pinned header and its license live in `native/vendor/`.
 - [HsLua](https://hackage.haskell.org/package/hslua-core): protected Haskell
@@ -288,7 +291,21 @@ all file nodes, so multi-scene selection is not supported. OBJ/IQM retain the
 earlier static import path. Imported factors follow the
 [glTF material specification](https://github.com/KhronosGroup/glTF/blob/main/specification/2.0/Specification.adoc#metallic-roughness-material).
 
-This version has **no environment-map IBL, skeletal animation or terrain**.
+The Haskell renderer supports one global equirectangular Radiance `.hdr`
+environment: diffuse irradiance, GGX specular mip prefiltering and a split-sum
+BRDF LUT. The sky and reflections rotate together. Changing intensity/rotation
+reuses the cached maps; Refresh assets or project switching regenerates them.
+With an environment active, IBL replaces the simple ambient approximation while
+sun, point lights, shadows and fog remain available. Empty paths retain the
+original gradient/ambient fallback; corrupt HDR assets fail Check/Play/Build.
+The editor opens them with a diagnostic and fallback so the scene can be repaired.
+Baking uses 32px diffuse faces, 128px specular faces with seven mip levels, a
+128px LUT and 256 integration samples. HDR images are limited to 8192 × 4096
+with finite nonnegative radiance up to 60,000. This is a bounded global lighting
+path; local probes, HDR EXR files and offline-quality baking are unsupported.
+Material Gallery includes an original generated studio environment.
+
+This version has **no skeletal animation or terrain**.
 Imported meshes are static; physics colliders are
 explicit box/sphere approximations, independent of mesh geometry. Nonuniform
 sphere scale uses the largest axis. Dynamic bodies must be assembly roots;
@@ -308,8 +325,8 @@ The next targets follow these limits and the measured baseline:
    material/mesh instancing now reduce the 4,000-cube submission workload from
    the original 39 ms to about 4.2 ms on an M4. Eight copies of Marble Run's
    geometry take about 5.5 ms; these component timings do not establish game FPS.
-2. Add environment-map IBL to the Haskell renderer and exercise it in Material
-   Gallery, with the existing sun/shadow path retained.
+2. Environment-map IBL is now implemented and exercised in Material Gallery,
+   with the existing sun/shadow path retained and editor/export parity checked.
 3. Extend a playable sample with the collider/input support it needs: reuse
    Bullet's appropriate capsule, convex or static triangle-mesh shape and the
    existing window backend's controller input. Authoring, bindings and resource
@@ -317,7 +334,8 @@ The next targets follow these limits and the measured baseline:
 4. Add skeletal animation and terrain when a playable sample establishes their
    requirements.
 
-These are remaining targets, not implemented features. Measurements and clean
+Items 1–2 now have working checkpoints; collider/input and animation/terrain
+remain the next implementation slices. Measurements and clean
 public-package qualification are in [the current verification report](docs/haskell-verification.md).
 
 ## Verification tools

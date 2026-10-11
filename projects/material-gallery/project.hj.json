@@ -385,7 +385,10 @@
       -0.4
     ],
     "sunPower": 3,
-    "sunShadows": true
+    "sunShadows": true,
+    "environmentMap": "assets/studio.hdr",
+    "environmentIntensity": 0.8,
+    "environmentRotation": 25
   },
   "haskellGame": null,
   "name": "Material Gallery",

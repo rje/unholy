@@ -12,6 +12,7 @@ OUT.mkdir(parents=True)
 shutil.copytree(ROOT/'projects/material-gallery/assets',OUT/'model')
 scene=json.loads((ROOT/'projects/material-gallery/project.hj.json').read_text())
 scene['entities'][0]['mesh']['geometry']='model/reliquaries.gltf'
+scene['environment']['environmentMap']='model/studio.hdr'
 project=OUT/'project.hj.json'
 project.write_text(json.dumps(scene,indent=2)+'\n')
 events=[(10,7,1350,586,0,0),(11,6,0,0,0,0),(14,5,0,0,0,0),

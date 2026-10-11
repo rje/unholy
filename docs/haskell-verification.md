@@ -5,7 +5,7 @@
 The current macOS checkpoint builds the library, editor, benchmark and both
 independently packaged games. `make test` passes 20 engine integration groups
 and the Pulse Courier and Circuit Breaker gameplay tests. `make render-test`
-passes 16 groups in a real graphics/audio context. Editor replay checks cover
+passes 17 groups in a real graphics/audio context. Editor replay checks cover
 failure recovery, authored component fields/links, gizmo undo/prefabs and
 imported material policy. The sections below retain the earlier checkpoints
 and their measured evidence.
@@ -14,6 +14,34 @@ macOS qualification uses Apple M4, GHC 9.14.1, raylib 6.0, Bullet 3.25 and
 Cabal's bundled Lua 5.4.8. Ubuntu 24.04 headless CI also passes the library/editor
 build, engine/game tests and generated-package export check. Linux desktop
 graphics, editor interaction and audible output are unqualified.
+
+## HDR environment checkpoint — 2026-10-11
+
+The renderer owns floating-point HDR upload, 32px diffuse irradiance faces,
+128px GGX prefiltered specular faces (seven levels) and a 128px split-sum BRDF
+LUT. Convolution uses 256 samples. A pinned HDR-only stb decoder supplies CPU
+samples; shader compilation, precomputation, texture caches and cleanup remain
+in Haskell. Khronos's [reference IBL shader](https://github.com/KhronosGroup/glTF-Sample-Renderer/blob/main/source/Renderer/shaders/ibl.glsl)
+provides the split-sum reference. This supports one global Radiance environment,
+with cached intensity/rotation edits, consistent sky/reflection orientation and
+sun/shadow coexistence. The studio HDR is original generated art.
+
+All 17 real GPU/audio groups pass. New checks retain decoded radiance above 10,
+verify constant-light irradiance/π and specular normalization on all six faces,
+upper/lower orientation, roughness broadening of a bright patch, and actual IBL
+lighting/rotation at a sphere interior pixel. They also cover zero intensity,
+ambient fallback, short-buffer rejection, texture disposal and shared-context
+2D/cubemap/seamless state restoration. The 20 engine groups and both separate
+game suites pass, including headless HDR decode, corrupt/missing environment
+rejection, top-level HDR export and prior-export preservation.
+
+`python3 scripts/verify-environment.py` operates the actual app: asset attachment,
+hover without clamping intensity 8/rotation 270, rotation slider, save/reopen,
+asset export and identical local/relocated player pixels. The material-policy
+editor replay also passes with HDR and identical exported gallery pixels.
+Images were inspected. Receipts are in `build/verification/environment/` and
+`build/verification/imported-materials/`; copied unit/GPU logs are in the former.
+Linux graphics remains unqualified; this checkpoint proves macOS desktop behavior.
 
 ## Renderer scaling checkpoint — 2026-10-11
 
@@ -282,8 +310,8 @@ and instruction-budget hook remain established native integrations. GLSL still
 runs GPU shading. File imports can create temporary native GPU data; built-in
 primitives now avoid that path entirely.
 
-The engine's own source is 3,814 Haskell lines, 274 native-adapter lines and
-169 GLSL lines: about 89.6% Haskell by physical line count. This excludes upstream
+The engine's own source is 3,977 Haskell lines, 284 native-adapter lines and
+292 GLSL lines: about 87.3% Haskell by physical line count. This excludes upstream
 libraries, the vendored widget header, tests, sample game code, generated scenes
 and tooling. It describes engine ownership, not the implementation language of
 the graphics driver, solver or decoder dependencies.

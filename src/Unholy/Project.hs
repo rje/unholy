@@ -4,6 +4,7 @@ import Unholy.Types
 import Unholy.Transform (resolveWorld)
 import Unholy.JSON
 import qualified Unholy.Renderer.GLTF as GLTF
+import qualified Unholy.Renderer.IBL as IBL
 import qualified Data.IntMap.Strict as IM
 import qualified Data.Map.Strict as M
 import Control.Monad (forM, forM_, unless, when, foldM)
@@ -26,7 +27,7 @@ projectJSON p = Object
   , ("nextId", int (nextId w)), ("entities", Array (map entity (IM.toAscList (names w))))
   , ("camera", Object [("eye",vec (eye c)),("target",vec (target c)),("fov",num (fov c))])
   , ("physics",Object [("gravity",vec (gravity settings)),("supportNormal",num (supportNormal settings)),("supportDistance",num (supportDistance settings))])
-  , ("environment", Object [("sunDirection",vec (sunDirection env)),("sunColor",vec (sunColor env)),("sunPower",num (sunPower env)),("ambient",num (ambient env)),("exposure",num (exposure env)),("skyTop",vec (skyTop env)),("skyBottom",vec (skyBottom env)),("fogDensity",num (fogDensity env)),("sunShadows",Boolean (sunShadows env))]) ]
+  , ("environment", Object [("sunDirection",vec (sunDirection env)),("sunColor",vec (sunColor env)),("sunPower",num (sunPower env)),("ambient",num (ambient env)),("exposure",num (exposure env)),("skyTop",vec (skyTop env)),("skyBottom",vec (skyBottom env)),("fogDensity",num (fogDensity env)),("sunShadows",Boolean (sunShadows env)),("environmentMap",String (environmentMap env)),("environmentIntensity",num (environmentIntensity env)),("environmentRotation",num (environmentRotation env))]) ]
   where
     w=world p; c=camera p; env=environment p;settings=physicsSettings p
     int=Number . fromIntegral; num=Number . realToFrac; vec=Array . map num . vlist
@@ -64,6 +65,9 @@ decodeProject input = do
     <*> optionalField "skyBottom" (vfield "skyBottom" en) (skyBottom defaultEnvironment) en
     <*> optionalField "fogDensity" (floatField "fogDensity" en) 0 en
     <*> optionalField "sunShadows" (field "sunShadows" en >>= boolean) False en
+    <*> optionalField "environmentMap" (field "environmentMap" en >>= string) "" en
+    <*> optionalField "environmentIntensity" (floatField "environmentIntensity" en) 1 en
+    <*> optionalField "environmentRotation" (floatField "environmentRotation" en) 0 en
   settings<-optionalField "physics" (do
     ph<-field "physics" j
     PhysicsSettings <$> vfield "gravity" ph <*> floatField "supportNormal" ph <*> floatField "supportDistance" ph) defaultPhysicsSettings j
@@ -124,10 +128,11 @@ validateProject p = do
   validateWorld (world p)
   let c=camera p; env=environment p; ph=physicsSettings p
   unless (validV (eye c) && validV (target c) && finite (fov c) && fov c>1 && fov c<179 && eye c/=target c) (Left "Invalid camera")
-  unless (all validV [sunDirection env,sunColor env,skyTop env,skyBottom env] && all finite [sunPower env,ambient env,exposure env,fogDensity env] && sunPower env>=0 && ambient env>=0 && exposure env>0 && fogDensity env>=0 && sunDirection env/=V3 0 0 0) (Left "Invalid environment")
+  unless (all validV [sunDirection env,sunColor env,skyTop env,skyBottom env] && all finite [sunPower env,ambient env,exposure env,fogDensity env,environmentIntensity env,environmentRotation env] && sunPower env>=0 && ambient env>=0 && exposure env>0 && fogDensity env>=0 && sunDirection env/=V3 0 0 0 && environmentIntensity env>=0 && environmentIntensity env<=20) (Left "Invalid environment")
   unless (validV (gravity ph) && finite (supportNormal ph) && supportNormal ph>=0 && supportNormal ph<=1 && finite (supportDistance ph) && supportDistance ph>=0) (Left "Invalid physics settings")
   when (haskellGame p==Just "") (Left "Empty Haskell game identifier")
-  mapM_ assetPath (assetReferences (world p))
+  unless (null (environmentMap env) || map toLower (takeExtension (environmentMap env))==".hdr") (Left "Environment maps must be Radiance .hdr images")
+  mapM_ assetPath (projectAssetReferences p)
 
 assetPath :: FilePath -> Either String ()
 assetPath p
@@ -140,6 +145,9 @@ builtins = ["cube","sphere","plane","cylinder","torus"]
 
 assetReferences :: World -> [FilePath]
 assetReferences w = nub (IM.elems (scripts w) ++ [geometry m | m<-IM.elems (meshes w), geometry m `notElem` builtins] ++ [texture m | m<-IM.elems (meshes w),not (null (texture m))])
+
+projectAssetReferences :: Project -> [FilePath]
+projectAssetReferences p = nub (assetReferences (world p) ++ [environmentMap (environment p) | not (null (environmentMap (environment p)))])
 
 loadProject :: FilePath -> IO (Either String Project)
 loadProject path = ioEither $ do
@@ -158,12 +166,16 @@ saveProject path p = ioEither $ do
 
 checkAssets :: FilePath -> Project -> IO [String]
 checkAssets root p = do
-  direct<-checkAssetFiles root (assetReferences (world p))
+  direct<-checkAssetFiles root (projectAssetReferences p)
   if not (null direct) then pure direct else do
+    hdr<-if null (environmentMap (environment p)) then pure [] else do
+      let path=environmentMap (environment p)
+      decoded<-try (IBL.loadHDR (root </> path))
+      pure (case decoded of Right _->[];Left err->["Environment "++path++": "++show (err::IOException)])
     discovered<-try (expandedAssetReferences root (world p))
     case discovered of
-      Left err->pure [show (err::IOException)]
-      Right refs->checkAssetFiles root refs
+      Left err->pure (hdr++[show (err::IOException)])
+      Right refs->(hdr++) <$> checkAssetFiles root (refs++projectAssetReferences p)
 
 expandedAssetReferences :: FilePath -> World -> IO [FilePath]
 expandedAssetReferences root w=fmap (nub . concat) $ forM (assetReferences w) $ \ref->do
@@ -230,7 +242,7 @@ buildProjectWithAssets extra root engineAssets p = ioEither $ do
   invalid<-checkAssets root p
   unless (null invalid) (ioError (userError (unlines invalid)))
   importedRefs<-expandedAssetReferences root (world p)
-  let refs=nub (importedRefs++extra)
+  let refs=nub (importedRefs++projectAssetReferences p++extra)
   missing<-checkAssetFiles root refs
   unless (null missing) (ioError (userError (unlines missing)))
   let output=root </> "dist" </> slug (projectName p)
@@ -248,7 +260,7 @@ buildProjectWithAssets extra root engineAssets p = ioEither $ do
     createDirectoryIfMissing True (takeDirectory (staging </> ref))
     copyFile (root </> ref) (staging </> ref)
   copyTree (engineAssets </> "shaders") (staging </> "engine" </> "shaders")
-  forM_ ["pbr.vs","pbr.fs","depth.vs","depth.fs","screen.vs","screen.fs","line.vs","line.fs"] $ \shader -> do
+  forM_ ["pbr.vs","pbr.fs","depth.vs","depth.fs","screen.vs","screen.fs","line.vs","line.fs","ibl.fs"] $ \shader -> do
     shaderExists<-doesFileExist (staging </> "engine" </> "shaders" </> shader)
     unless shaderExists (ioError (userError ("Missing engine shader: "++shader)))
   writeFile (staging </> projectFile) (encodeJSON (projectJSON p)++"\n")

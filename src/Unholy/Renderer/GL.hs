@@ -22,6 +22,7 @@ deleteObject del ident = when (ident/=0) (with ident (del 1))
 
 uniformNames :: [String]
 uniformNames = ["mvp","matModel","matNormal","viewProjection","useInstances","texture0","shadowMap","lightVP","baseColor","metalness","roughness","emission","viewPos","sunDirection","sunColor","sunPower","ambientPower","exposure","fogColor","fogDensity","useShadows","lightCount","skyTop","skyBottom","mode"]
+  ++ ["iblEnabled","environmentIntensity","environmentRotation","environmentMap","irradianceMap","prefilterMap","brdfLUT","prefilterLevels","inverseVP","face","roughnessLevel"]
   ++ ["baseColorLinear","normalMap","metalMap","roughMap","emissiveMap","occlusionMap","emissiveColor","useNormalMap","normalScale","occlusionStrength"]
   ++ [field++"["++show i++"]" | i<-[0..7::Int],field<-["lightPosition","lightColor","lightPower"]]
 
@@ -169,7 +170,7 @@ bindTarget Target{..} = glBindFramebuffer GL_FRAMEBUFFER framebuffer >> glViewpo
 data GLState = GLState
   { savedDrawFbo :: !GLint, savedReadFbo :: !GLint, savedViewport :: !(V4 GLint)
   , savedProgram :: !GLint, savedVAO :: !GLint, savedVBO :: !GLint
-  , savedActiveTexture :: !GLint, savedTex0 :: !GLint, savedTex1 :: !GLint, savedOtherTextures :: ![GLint]
+  , savedActiveTexture :: !GLint, savedTex0 :: !GLint, savedTex1 :: !GLint, savedOtherTextures :: ![GLint], savedCubeTextures :: ![GLint]
   , savedUnpack :: !GLint, savedPack :: !GLint, savedDepthFunc :: !GLint, savedCullFace :: !GLint
   , savedDepthMask :: !GLboolean, savedFlags :: ![(GLenum,GLboolean)]
   } deriving (Eq,Show)
@@ -188,14 +189,15 @@ captureState = do
   savedTex0<-getInt GL_TEXTURE_BINDING_2D
   glActiveTexture GL_TEXTURE1
   savedTex1<-getInt GL_TEXTURE_BINDING_2D
-  savedOtherTextures<-forM [2..6] $ \unit->glActiveTexture (GL_TEXTURE0+unit) >> getInt GL_TEXTURE_BINDING_2D
+  savedOtherTextures<-forM [2..9] $ \unit->glActiveTexture (GL_TEXTURE0+unit) >> getInt GL_TEXTURE_BINDING_2D
+  savedCubeTextures<-forM [0..9] $ \unit->glActiveTexture (GL_TEXTURE0+unit) >> getInt GL_TEXTURE_BINDING_CUBE_MAP
   glActiveTexture (fromIntegral savedActiveTexture)
   savedUnpack<-getInt GL_UNPACK_ALIGNMENT
   savedPack<-getInt GL_PACK_ALIGNMENT
   savedDepthFunc<-getInt GL_DEPTH_FUNC
   savedCullFace<-getInt GL_CULL_FACE_MODE
   savedDepthMask<-alloca $ \p -> glGetBooleanv GL_DEPTH_WRITEMASK p >> peek p
-  savedFlags<-forM [GL_DEPTH_TEST,GL_CULL_FACE,GL_BLEND,GL_SCISSOR_TEST] $ \flag -> (,) flag <$> glIsEnabled flag
+  savedFlags<-forM [GL_DEPTH_TEST,GL_CULL_FACE,GL_BLEND,GL_SCISSOR_TEST,GL_TEXTURE_CUBE_MAP_SEAMLESS] $ \flag -> (,) flag <$> glIsEnabled flag
   pure GLState{..}
 restoreState :: GLState -> IO ()
 restoreState GLState{..} = do
@@ -210,7 +212,8 @@ restoreState GLState{..} = do
   glBindTexture GL_TEXTURE_2D (fromIntegral savedTex0)
   glActiveTexture GL_TEXTURE1
   glBindTexture GL_TEXTURE_2D (fromIntegral savedTex1)
-  forM_ (zip [2..6] savedOtherTextures) $ \(unit,tex)->glActiveTexture (GL_TEXTURE0+unit) >> glBindTexture GL_TEXTURE_2D (fromIntegral tex)
+  forM_ (zip [2..9] savedOtherTextures) $ \(unit,tex)->glActiveTexture (GL_TEXTURE0+unit) >> glBindTexture GL_TEXTURE_2D (fromIntegral tex)
+  forM_ (zip [0..9] savedCubeTextures) $ \(unit,tex)->glActiveTexture (GL_TEXTURE0+unit) >> glBindTexture GL_TEXTURE_CUBE_MAP (fromIntegral tex)
   glActiveTexture (fromIntegral savedActiveTexture)
   glPixelStorei GL_UNPACK_ALIGNMENT savedUnpack
   glPixelStorei GL_PACK_ALIGNMENT savedPack

@@ -247,7 +247,7 @@ drawHierarchy window h s = do
 drawInspector :: N.Window -> Float -> Float -> Editor -> IO Editor
 drawInspector window w h s = do
   wheel<-N.wheel window (w-322) 118 322 (h-146)
-  let maxScroll=if tab s==WorldTab then 600 else 1350
+  let maxScroll=if tab s==WorldTab then 820 else 1350
       scroll=max 0 (min maxScroll (inspectorScroll s-wheel*40))
       x=w-305; y=132-scroll
   N.clip window (w-322) 120 322 (h-149)
@@ -453,8 +453,12 @@ worldInspector window x y s = do
   sky2<-vectorFields window 250 x (y+856) "SKY / HORIZON COLOR" (skyBottom env)
   fog<-N.slider window x (y+923) 287 "Atmospheric fog" (fogDensity env) 0 0.05
   shadows<-N.button window x (y+974) 287 30 (if sunShadows env then "Sun shadows: enabled" else "Sun shadows: disabled") 0
+  N.text window x (y+1030) 13 "HDR ENVIRONMENT / RADIANCE" 2
+  hdr<-N.textbox window 270 x (y+1055) 287 33 (environmentMap env)
+  hdrPower<-N.slider window x (y+1105) 287 "Environment intensity" (environmentIntensity env) 0 20
+  hdrRotation<-N.slider window x (y+1153) 287 "Environment rotation" (environmentRotation env) (-180) 180
   let camera'=if pos==tgt then cam else Camera pos tgt fov'
-      env'=env {sunDirection=if sun==V3 0 0 0 then sunDirection env else sun,sunColor=color,sunPower=power,ambient=amb,exposure=exp',skyTop=sky1,skyBottom=sky2,fogDensity=fog,sunShadows=if shadows then not (sunShadows env) else sunShadows env}
+      env'=env {sunDirection=if sun==V3 0 0 0 then sunDirection env else sun,sunColor=color,sunPower=power,ambient=amb,exposure=exp',skyTop=sky1,skyBottom=sky2,fogDensity=fog,environmentMap=hdr,environmentIntensity=hdrPower,environmentRotation=hdrRotation,sunShadows=if shadows then not (sunShadows env) else sunShadows env}
   finalCamera<-if useView then N.getCamera window else pure camera'
   pure (change (p {projectName=name,environment=env',camera=finalCamera,physicsSettings=(physicsSettings p) {gravity=gravity'}}) s {grid=if gridToggle then not (grid s) else grid s})
   where p=document s;env=environment p;cam=camera p
@@ -480,6 +484,7 @@ drawAssets window w h s = do
   pure result {assetScroll=offset,assets=refreshed}
 
 attachAsset :: FilePath -> Editor -> Editor
+attachAsset path s | takeExtension path==".hdr" = addLog ("Environment: "++path) $ change ((document s) {environment=(environment (document s)) {environmentMap=path}}) s {tab=WorldTab}
 attachAsset path s = case selected s of
   Nothing->addLog "Select an entity before attaching an asset." s
   Just e->addLog ("Attached "++path) $ editWorld (\w->case takeExtension path of

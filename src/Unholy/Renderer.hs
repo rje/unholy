@@ -10,6 +10,7 @@ import Unholy.Renderer.GL
 import Unholy.Renderer.Camera
 import Unholy.Renderer.Assets
 import qualified Unholy.Renderer.GLTF as F
+import qualified Unholy.Renderer.IBL as IBL
 import Graphics.GL
 import qualified Linear as L
 import qualified Data.Map.Strict as M
@@ -24,7 +25,7 @@ import System.FilePath ((</>))
 foreign import ccall unsafe "rlDrawRenderBatchActive" flushUI :: IO ()
 
 data Renderer = Renderer
-  { pbrProgram :: !Program, shadowProgram :: !Program, screenProgram :: !Program, lineProgram :: !Program
+  { pbrProgram :: !Program, shadowProgram :: !Program, screenProgram :: !Program, lineProgram :: !Program, iblProgram :: !Program
   , shadowTarget :: !Target, viewportTarget :: !(IORef (Maybe Target))
   , meshCache :: !(IORef (M.Map FilePath ModelData)), textureCache :: !(IORef (M.Map FilePath GLuint))
   , whiteTexture :: !GLuint, neutralMaps :: ![GLuint], screenBuffer :: !Buffer, gridBuffer :: !Buffer, boxBuffer :: !Buffer
@@ -33,6 +34,7 @@ data Renderer = Renderer
   , gizmoMode :: !(IORef (Maybe Gizmo.Mode)), gizmoDrag :: !(IORef (Maybe Gizmo.Drag)), gizmoEdit :: !(IORef (Maybe Gizmo.Edit)), ringBuffers :: ![Buffer]
   , instanceBuffer :: !GLuint, poseCache :: !(IORef (IM.IntMap CachedPose))
   , instancingEnabled :: !(IORef Bool), cullingEnabled :: !(IORef Bool), frameStats :: !(IORef FrameStats)
+  , environmentCache :: !(IORef (Maybe (FilePath,Maybe IBL.IBL)))
   , disposed :: !(IORef Bool)
   }
 data Draw = Draw { drawEntity :: !Entity, drawModel :: !ModelData, drawMatrix :: !(L.M44 Float), drawMaterial :: !Material, drawTexture :: !GLuint, drawImported :: !Bool }
@@ -47,6 +49,7 @@ initialize root = preservingState $ \_ ->
   bracketOnError (load "depth") (glDeleteProgram . programId) $ \shadowProgram ->
   bracketOnError (load "screen") (glDeleteProgram . programId) $ \screenProgram ->
   bracketOnError (load "line") (glDeleteProgram . programId) $ \lineProgram ->
+  bracketOnError (loadProgram (root </> "shaders/screen.vs") (root </> "shaders/ibl.fs")) (glDeleteProgram . programId) $ \iblProgram ->
   bracketOnError (newTarget True 2048 2048) deleteTarget $ \shadowTarget ->
   bracketOnError (withArray ([255,255,255,255]::[Word8]) (newTexture 1 1)) (deleteObject glDeleteTextures) $ \whiteTexture ->
   bracketOnError (lineBuffer [L.V3 (-1) (-1) 0,L.V3 3 (-1) 0,L.V3 (-1) 3 0]) deleteBuffer $ \screenBuffer ->
@@ -70,6 +73,7 @@ initialize root = preservingState $ \_ ->
     cullingEnabled<-newIORef True
     frameStats<-newIORef (FrameStats 0 0 0 0)
     let neutralMaps=replicate 6 whiteTexture
+    environmentCache<-newIORef Nothing
     disposed<-newIORef False
     checkGL "Haskell renderer initialization"
     putStrLn "Renderer: Haskell / OpenGL 3.3 (direct GPU submission)"
@@ -102,6 +106,8 @@ unloadAssets Renderer{..} = do
   flushUI
   models<-atomicModifyIORef' meshCache (\m -> (M.empty,m))
   textures<-atomicModifyIORef' textureCache (\m -> (M.empty,m))
+  priorEnvironment<-atomicModifyIORef' environmentCache (\value->(Nothing,value))
+  mapM_ (mapM_ IBL.deleteIBL . snd) priorEnvironment
   writeIORef poseCache IM.empty
   mapM_ deleteModel (M.elems models)
   mapM_ (deleteObject glDeleteTextures) (filter (/=whiteTexture) (M.elems textures))
@@ -113,7 +119,7 @@ close r@Renderer{..} = do
     readIORef viewportTarget >>= mapM_ deleteTarget
     writeIORef viewportTarget Nothing
     deleteTarget shadowTarget
-    mapM_ (glDeleteProgram . programId) [pbrProgram,shadowProgram,screenProgram,lineProgram]
+    mapM_ (glDeleteProgram . programId) [pbrProgram,shadowProgram,screenProgram,lineProgram,iblProgram]
     mapM_ deleteBuffer ([screenBuffer,gridBuffer,boxBuffer,lightBuffer]++axisBuffers++ringBuffers)
     deleteObject glDeleteTextures whiteTexture
     deleteObject glDeleteBuffers instanceBuffer
@@ -141,6 +147,27 @@ getModelFor r importedPolicy path = do
       when importedPolicy (forM_ (materialError model) (reportError r . userError))
       modifyIORef' (meshCache r) (M.insert path model)
       pure model
+getEnvironment :: Renderer -> FilePath -> IO (Maybe IBL.IBL)
+getEnvironment r path = do
+  cached<-readIORef (environmentCache r)
+  case cached of
+    Just (old,maps) | old==path->pure maps
+    _->do
+      loaded<-if null path then pure Nothing else do
+        attempt<-try (IBL.loadIBL (iblProgram r) (screenBuffer r) path)
+        case attempt of Right maps->pure (Just maps);Left err->reportError r err >> pure Nothing
+      writeIORef (environmentCache r) (Just (path,loaded))
+      mapM_ (mapM_ IBL.deleteIBL . snd) cached
+      pure loaded
+
+setIBL :: Program -> Environment -> Maybe IBL.IBL -> IO ()
+setIBL shader env maps = do
+  intUniform shader "iblEnabled" (maybe 0 (const 1) maps)
+  floatUniform shader "environmentIntensity" (environmentIntensity env)
+  floatUniform shader "environmentRotation" (environmentRotation env*pi/180)
+  floatUniform shader "prefilterLevels" 6
+  forM_ [("irradianceMap",7),("prefilterMap",8),("brdfLUT",9)] $ \(name,unit)->intUniform shader name unit
+
 getTexture :: Renderer -> FilePath -> IO GLuint
 getTexture r "" = pure (whiteTexture r)
 getTexture r path = do
@@ -210,6 +237,7 @@ drawScene r mouse down snapping root project rect@(x,y,w,h) (screenW,screenH) ed
         shadows=M.fromListWith mergeShadow [(vertexArray buffer,(buffer,[pose])) | (d,pose)<-prepared,mesh<-modelMeshes (drawModel d),let buffer=meshBuffer mesh]
         callCount poses=if useBatch && length poses>1 then 1 else length poses
     writeIORef (frameStats r) (FrameStats (sum [length (modelMeshes (drawModel d)) | (d,_)<-prepared]) (sum [length (modelMeshes (drawModel d)) | (d,_)<-visible]) (sum [callCount poses | (_,_,poses)<-M.elems colors]) (if sunShadows env then sum [callCount poses | (_,poses)<-M.elems shadows] else 0))
+    ibl<-getEnvironment r (if null (environmentMap env) then "" else root </> environmentMap env)
     viewport<-ensureViewport r renderW renderH
     glDisable GL_SCISSOR_TEST
     glDisable GL_BLEND
@@ -233,12 +261,24 @@ drawScene r mouse down snapping root project rect@(x,y,w,h) (screenW,screenH) ed
     intUniform (screenProgram r) "texture0" 0
     glActiveTexture GL_TEXTURE0
     glBindTexture GL_TEXTURE_2D (whiteTexture r)
+    setIBL (screenProgram r) env ibl
+    intUniform (screenProgram r) "environmentMap" 7
+    matrixUniform (screenProgram r) "inverseVP" (L.inv44 vp)
+    vectorUniform (screenProgram r) "viewPos" (toLinear (eye cam))
+    floatUniform (screenProgram r) "exposure" (exposure env)
+    forM_ ibl $ \maps->glActiveTexture (GL_TEXTURE0+7) >> glBindTexture GL_TEXTURE_2D (IBL.radianceTexture maps)
     vectorUniform (screenProgram r) "skyTop" (toLinear (skyTop env))
     vectorUniform (screenProgram r) "skyBottom" (toLinear (skyBottom env))
     drawBuffer GL_TRIANGLES (screenBuffer r)
     glEnable GL_DEPTH_TEST
     glEnable GL_CULL_FACE
     setEnvironment r cam env lightVP displayed
+    setIBL (pbrProgram r) env ibl
+    glEnable GL_TEXTURE_CUBE_MAP_SEAMLESS
+    forM_ ibl $ \maps->do
+      forM_ [(7,IBL.irradianceTexture maps),(8,IBL.prefilterTexture maps)] $ \(unit,tex)->glActiveTexture (GL_TEXTURE0+unit) >> glBindTexture GL_TEXTURE_CUBE_MAP tex
+      glActiveTexture (GL_TEXTURE0+9)
+      glBindTexture GL_TEXTURE_2D (IBL.brdfTexture maps)
     matrixUniform (pbrProgram r) "viewProjection" vp
     forM_ (M.elems colors) $ \(buffer,surface,poses)->do
       applySurface (pbrProgram r) (whiteTexture r) surface
