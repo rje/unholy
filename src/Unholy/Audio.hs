@@ -8,7 +8,7 @@ import Foreign.C
 import Data.IORef
 import qualified Data.Map.Strict as M
 import Control.Monad (forM, forM_, when, unless)
-import Control.Exception (finally)
+import Control.Exception (finally, mask, mask_, onException)
 import System.Directory (doesFileExist)
 import Unholy.Types (finite)
 
@@ -37,7 +37,7 @@ stats (Engine _ ref) = do
   pure (M.size (clips s),sum (map (length . voices) (M.elems (clips s))),paused s,muted s)
 
 playOn :: Engine -> FilePath -> Float -> Float -> Bool -> IO ()
-playOn (Engine backend ref) path rawVolume rawPitch looping = do
+playOn (Engine backend ref) path rawVolume rawPitch looping = mask $ \restore -> do
   s<-readIORef ref
   when (disposed s) (ioError (userError "Audio engine is closed"))
   let volume=bounded 0 1 rawVolume; pitch=bounded 0.25 3 rawPitch
@@ -65,15 +65,20 @@ playOn (Engine backend ref) path rawVolume rawPitch looping = do
         (before,(v,_):after) -> pure (v,map fst (before++after))
         _ | length (shots clip)<8 -> do v<-fresh;pure (v,shots clip)
           | otherwise -> pure (last (shots clip),init (shots clip))
-  volumeVoice backend (handle voice) volume
-  pitchVoice backend (handle voice) pitch
-  active<-playingVoice backend (handle voice)
-  nextVoice<-if volume<=0 then stopVoice backend (handle voice) >> pure voice {resume=False}
-    else if looping && (active || resume voice) then pure voice
-    else do
-      playVoice backend (handle voice)
-      when (paused s) (pauseVoice backend (handle voice))
-      pure voice {resume=paused s}
+  -- Acquisition and publication are masked together. Every allocated alias is
+  -- owned before a backend callback can fail or cancellation can arrive.
+  let ownedClip=if looping then clip {loopVoice=Just voice} else clip {shots=voice:rest}
+  modifyIORef' ref (\current -> current {clips=M.insert path ownedClip (clips current)})
+  nextVoice<-restore $ do
+    volumeVoice backend (handle voice) volume
+    pitchVoice backend (handle voice) pitch
+    active<-playingVoice backend (handle voice)
+    if volume<=0 then stopVoice backend (handle voice) >> pure voice {resume=False}
+      else if looping && (active || resume voice) then pure voice
+      else do
+        playVoice backend (handle voice)
+        when (paused s) (pauseVoice backend (handle voice))
+        pure voice {resume=paused s}
   let nextClip=if looping then clip {loopVoice=Just nextVoice} else clip {shots=nextVoice:rest}
   modifyIORef' ref (\current -> current {clips=M.insert path nextClip (clips current)})
   where bounded lo hi x = if finite x then max lo (min hi x) else lo
@@ -98,22 +103,22 @@ muteOn (Engine backend ref) value = do
   s<-readIORef ref
   unless (disposed s) $ masterVolume backend (if value then 0 else 0.7) >> writeIORef ref s {muted=value}
 stopOn :: Engine -> IO ()
-stopOn (Engine backend ref) = do
-  s<-readIORef ref
+stopOn (Engine backend ref) = mask_ $ do
+  owned<-atomicModifyIORef' ref (\s -> (s {clips=M.empty,paused=False},clips s))
   -- Aliases must be released before their shared sample data.
-  forM_ (M.elems (clips s)) $ \clip -> do
-    forM_ (voices clip) $ \v -> stopVoice backend (handle v) >> unloadClip backend (handle v) True
-    unloadClip backend (source clip) False
-  writeIORef ref s {clips=M.empty,paused=False}
+  -- Drain ownership first and attempt all releases, even if one callback fails.
+  let release clip=foldr finally (unloadClip backend (source clip) False)
+        [stopVoice backend (handle v) `finally` unloadClip backend (handle v) True | v<-voices clip]
+  foldr finally (pure ()) (map release (M.elems owned))
 closeEngine :: Engine -> IO ()
-closeEngine engine@(Engine backend ref) = do
-  s<-readIORef ref
-  unless (disposed s) $ stopOn engine `finally` (modifyIORef' ref (\x -> x {disposed=True}) >> closeDevice backend)
+closeEngine engine@(Engine backend ref) = mask_ $ do
+  closed<-atomicModifyIORef' ref (\s -> (s {disposed=True},disposed s))
+  unless closed (stopOn engine `finally` closeDevice backend)
 
 openDevice :: IO (Maybe Engine)
-openDevice = do
+openDevice = mask_ $ do
   ready<-cInit
-  if ready==0 then pure Nothing else Just <$> newEngine nativeBackend
+  if ready==0 then pure Nothing else (Just <$> newEngine nativeBackend) `onException` cClose
 play :: Maybe Engine -> FilePath -> Float -> Float -> Bool -> IO ()
 play engine path volume pitch looping = do
   exists<-doesFileExist path

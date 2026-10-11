@@ -4,7 +4,7 @@ import Unholy.Types
 import Unholy.Script
 import qualified Unholy.Audio as A
 import qualified Data.IntMap.Strict as IM
-import Control.Monad (unless, replicateM_, forM_)
+import Control.Monad (unless, when, replicateM_, forM_)
 import Control.Exception (try, IOException, finally)
 import Data.IORef
 import Data.List (isInfixOf)
@@ -101,3 +101,37 @@ audioPolicy = do
   assert "device and voices released exactly once" (length (filter (=="close") events')==1 && length (filter (isInfixOf "unload ") events')==12)
   bad<-try (A.playOn engine "closed.wav" 1 1 False) :: IO (Either IOException ())
   assert "closed engine rejects playback" (either (const True) (const False) bad)
+  -- An alias belongs to the engine before configuration/playback can throw.
+  forM_ ["volume","pitch","playing","play","pause"] $ \stage -> do
+    allocated<-newIORef (0::Int)
+    released<-newIORef []
+    closed<-newIORef (0::Int)
+    let acquire=atomicModifyIORef' allocated (\n->(n+1,intPtrToPtr (fromIntegral (n+1))))
+        failAt label=when (stage==label) (ioError (userError ("injected "++label)))
+        faulty=backend {A.loadClip=const acquire,A.aliasClip=const acquire
+          ,A.unloadClip= \sound alias->modifyIORef' released (++[(key sound,alias)])
+          ,A.volumeVoice= \_ _->failAt "volume",A.pitchVoice= \_ _->failAt "pitch"
+          ,A.playingVoice= \_->failAt "playing" >> pure False
+          ,A.playVoice= \_->failAt "play",A.pauseVoice= \_->failAt "pause"
+          ,A.stopVoice=const (pure ()),A.closeDevice=modifyIORef' closed (+1)}
+    owned<-A.newEngine faulty
+    when (stage=="pause") (A.pauseOn owned True)
+    failed<-try (A.playOn owned "fault.wav" 1 1 False) :: IO (Either IOException ())
+    assert ("backend failure not injected: "++stage) (either (const True) (const False) failed)
+    A.closeEngine owned
+    A.closeEngine owned
+    freed<-readIORef released
+    times<-readIORef closed
+    assert ("voice ownership lost after "++stage++": "++show freed) (freed==[(2,True),(1,False)] && times==1)
+  released<-newIORef []
+  let failingRelease=backend {A.unloadClip= \sound alias->do
+        modifyIORef' released (++[(key sound,alias)])
+        when alias (ioError (userError "injected unload failure"))}
+  drain<-A.newEngine failingRelease
+  A.playOn drain "drain.wav" 1 1 False
+  A.playOn drain "drain.wav" 1 1 False
+  _<-try (A.closeEngine drain) :: IO (Either IOException ())
+  attempted<-readIORef released
+  assert "cleanup failure skipped remaining aliases/source" (length attempted==3 && length (filter snd attempted)==2 && not (snd (last attempted)))
+  A.closeEngine drain
+  readIORef released >>= assert "failed cleanup retried detached handles" . (==attempted)
