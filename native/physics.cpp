@@ -110,15 +110,15 @@ int hj_physics_contacts(void *p,int *ids,float *data,int capacity) {
     }
     return count;
 }
-int hj_physics_ray(void *p,const float *from,const float *to,int ignore,float *data) {
+int hj_physics_ray(void *p,const float *from,const float *to,int ignore,int solidOnly,float *data) {
     struct Result : btCollisionWorld::ClosestRayResultCallback {
-        int ignore;
-        Result(const btVector3 &a,const btVector3 &b,int id):ClosestRayResultCallback(a,b),ignore(id) {}
+        int ignore;bool solidOnly;
+        Result(const btVector3 &a,const btVector3 &b,int id,bool solids):ClosestRayResultCallback(a,b),ignore(id),solidOnly(solids) {}
         bool needsCollision(btBroadphaseProxy *proxy) const override {
             auto object=static_cast<btCollisionObject*>(proxy->m_clientObject);
-            return object->getUserIndex()!=ignore && ClosestRayResultCallback::needsCollision(proxy);
+            return object->getUserIndex()!=ignore && (!solidOnly || object->hasContactResponse()) && ClosestRayResultCallback::needsCollision(proxy);
         }
-    } result(btVector3(from[0],from[1],from[2]),btVector3(to[0],to[1],to[2]),ignore);
+    } result(btVector3(from[0],from[1],from[2]),btVector3(to[0],to[1],to[2]),ignore,solidOnly!=0);
     static_cast<World*>(p)->dynamics.rayTest(result.m_rayFromWorld,result.m_rayToWorld,result);
     if(!result.hasHit()) return 0;
     data[0]=result.m_hitPointWorld.x();data[1]=result.m_hitPointWorld.y();data[2]=result.m_hitPointWorld.z();

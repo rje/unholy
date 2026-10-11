@@ -11,9 +11,10 @@ data Material = Material { albedo :: !V3, metallic :: !Float, roughness :: !Floa
   deriving (Eq, Show, Read)
 data Mesh = Mesh { geometry :: String, texture :: FilePath, useImportedMaterials :: !Bool } deriving (Eq, Show, Read)
 data Light = Light { lightColor :: !V3, intensity :: !Float } deriving (Eq, Show, Read)
-data Animator = Animator { animationClip :: String, animationTime :: !Float, animationRate :: !Float, animationLoop :: !Bool, animationPlaying :: !Bool } deriving (Eq,Show,Read)
+data AnimationBlend = AnimationBlend { blendClip :: String, blendTime :: !Float, blendElapsed :: !Float, blendDuration :: !Float } deriving (Eq,Show,Read)
+data Animator = Animator { animationClip :: String, animationTime :: !Float, animationRate :: !Float, animationLoop :: !Bool, animationPlaying :: !Bool, animationBlend :: Maybe AnimationBlend } deriving (Eq,Show,Read)
 defaultAnimator :: Animator
-defaultAnimator=Animator "" 0 1 True True
+defaultAnimator=Animator "" 0 1 True True Nothing
 -- Finite centered X/Z grid, row-major (z*width+x), heights in local Y units.
 data Terrain = Terrain { terrainWidth :: !Int, terrainDepth :: !Int, terrainSpacing :: !Float, terrainHeights :: ![Float] } deriving (Eq,Show,Read)
 validTerrain :: Terrain -> Bool
@@ -121,11 +122,12 @@ validateWorld w
   | any (\l -> not (validV (lightColor l)) || not (finite (intensity l)) || intensity l < 0) (IM.elems (lights w)) = Left "Invalid point light"
   | any badBody (IM.elems (bodies w)) = Left "Invalid rigid body"
   | any (\(e,t)->not (validTerrain t) || maybe True ((/="terrain").geometry) (IM.lookup e (meshes w)) || IM.member e (animators w)) (IM.toList (terrains w)) || any (\(e,m)->geometry m=="terrain" && IM.notMember e (terrains w)) (IM.toList (meshes w)) = Left "Terrain requires a valid 2..129 grid and a terrain mesh without Animator"
-  | any (\(e,a)->IM.notMember e (meshes w) || not (all finite [animationTime a,animationRate a]) || animationTime a<0 || animationRate a<0 || animationRate a>10) (IM.toList (animators w)) = Left "Animators require a mesh, finite nonnegative time and rate 0..10"
+  | any (\(e,a)->IM.notMember e (meshes w) || not (all finite [animationTime a,animationRate a]) || animationTime a<0 || animationRate a<0 || animationRate a>10 || maybe False badBlend (animationBlend a)) (IM.toList (animators w)) = Left "Animators require a mesh, finite nonnegative clocks, rate 0..10 and a positive blend duration"
   | any badCollider (IM.toList (bodies w)) = Left "Capsules require uniform scale; mesh colliders require a mesh; triangle colliders must be static"
   | any badAuthored (IM.elems (authored w)) = Left "Invalid authored component field or entity reference"
   | otherwise = Right ()
   where
+    badBlend b=not (all finite [blendTime b,blendElapsed b,blendDuration b]) || blendTime b<0 || blendElapsed b<0 || blendDuration b<=0 || blendDuration b>30
     ids = IM.keys (names w)
     -- Duplicates do not affect membership checks. Avoid quadratic list nub on
     -- this path, which runs at every Haskell system boundary.

@@ -51,6 +51,8 @@ void hj_gamepad(int *buttons,float *axes) {
     for(int i=0;i<18;i++) buttons[i+1]=available?IsGamepadButtonDown(0,i):0;
     axes[0]=available?GetGamepadAxisMovement(0,GAMEPAD_AXIS_LEFT_X):0;
     axes[1]=available?GetGamepadAxisMovement(0,GAMEPAD_AXIS_LEFT_Y):0;
+    axes[2]=available?GetGamepadAxisMovement(0,GAMEPAD_AXIS_RIGHT_X):0;
+    axes[3]=available?GetGamepadAxisMovement(0,GAMEPAD_AXIS_RIGHT_Y):0;
 }
 void hj_widget_input(const int *keys,int pressed,int released) {for(int i=0;i<512;i++)widgetKeys[i]=keys[i]!=0;widgetPressed=pressed;widgetReleased=released;}
 void *hj_replay_load(const char *path) {AutomationEventList *list=calloc(1,sizeof(*list));if(list)*list=LoadAutomationEventList(path);return list;}

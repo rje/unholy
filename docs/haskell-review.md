@@ -25,6 +25,25 @@ the primary agent ran the suites and editor/export workflows. See the
 The broader public renderer-handle API and readability of older dense modules
 remain future improvements; this milestone does not claim they are resolved.
 
+## Follow-up review: sessions and Last Cue
+
+Astra reviewed the new Session, Checkpoint, Character, frame-action and clip-fade
+code read-only. It found camera-relative rotation signs, lazy menu payloads
+escaping gameplay error handling, a masked ownership-transfer gap, held-confirm
+leakage across scenes, inconsistent level filename/export validation, save failure
+blocking New Game, and interactive game buttons under editor modals/debugger Pause.
+These were corrected before qualification. Level handoff now carries optional
+game-owned JSON independently of disk saves. The new engine modules use ordinary
+records, abstract session ownership and explicit effects; they were formatted
+with Ormolu rather than extending the older compressed style.
+
+Its bounded follow-up source review found no remaining material blocker. Source
+constructor arities for GameContext, Animator and Gamepad have changed; the Game
+hook record is preserved. Tests separately cover UI fault forcing, cancellation
+cleanup, transition failure/retry, held confirmation, camera directions, atomic
+checkpoint preservation and unsaved gameplay. The review does not itself establish
+rendered gameplay, physical-controller behavior or performance.
+
 ## Original review
 
 Reviewed engine revision: `49bd449decbb4d66f5825ee57bcfc317fcd8084d`.

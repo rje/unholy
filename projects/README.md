@@ -10,6 +10,8 @@ export. Each project contains its own required assets.
 
 | Feature | Start here | What to try |
 | --- | --- | --- |
+| Session UI, actions, levels and durable checkpoints | [Last Cue](last-cue/README.md) | Complete two acts; pause/save/retry; close the player and Continue in a new process |
+| Camera-relative capsules and GPU clip fades | [Last Cue](last-cue/README.md) | Orbit while moving, step onto a lift, watch idle/walk/jump fades and whistle to stun a pursuer |
 | Instancing/culling | [Feature Courtyard](feature-courtyard/README.md) | Orbit around 128 columns with shared mesh/material and varied transforms |
 | Skeletal animation | [Feature Courtyard](feature-courtyard/README.md), [Threshold](../examples/threshold/README.md) | Compare independent walk phases and a paused pose; select a clip or move/jump in Threshold |
 | Finite terrain | [Feature Courtyard](feature-courtyard/README.md), [Threshold](../examples/threshold/README.md) | Edit Hills/Flat, spacing and center height; walk across the heightfield in Threshold |

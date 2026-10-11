@@ -19,6 +19,7 @@ import qualified Data.IntSet as S
 import Control.Exception (finally, onException, bracket)
 import Control.Concurrent (isCurrentThreadBound, myThreadId, ThreadId)
 import System.Info (os)
+import System.Environment (lookupEnv)
 import Text.Printf (printf)
 
 data Window = Window { renderer :: R.Renderer, audio :: Maybe Audio.Engine, owner :: ThreadId
@@ -63,7 +64,9 @@ openWindow title path = do
   bound<-isCurrentThreadBound
   unless bound (ioError (userError "Window initialization requires a bound OS thread"))
   let fontPath=if os=="darwin" then "/System/Library/Fonts/Supplemental/Arial.ttf" else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-  valid<-withCString title $ \t -> withCString fontPath $ \font -> cInit t font 1440 900 1100 760 60 (4+64+8192+32)
+  hidden<- (==Just "1") <$> lookupEnv "UNHOLY_WINDOW_HIDDEN"
+  let flags=4+64+8192+32+if hidden then 128+2048 else 0 -- raylib hidden + unfocused
+  valid<-withCString title $ \t -> withCString fontPath $ \font -> cInit t font 1440 900 1100 760 60 flags
   unless (valid/=0) (ioError (userError "Cannot create window"))
   forM_ T.styles $ \(control,property,value)->cStyle (fromIntegral control) (fromIntegral property) value
   sound<-Audio.openDevice `onException` cClose
@@ -98,11 +101,11 @@ frameTime w=do
   checkWindow w
   state<-readIORef (uiState w)
   nextReplay<-traverse advanceReplay (replay state)
-  pad<-allocaArray 19 $ \buttons->allocaArray 2 $ \axes->do
+  pad<-allocaArray 19 $ \buttons->allocaArray 4 $ \axes->do
     cGamepad buttons axes
     values<-peekArray 19 buttons
-    [sx,sy]<-map realToFrac <$> peekArray 2 axes
-    pure (I.Gamepad (head values/=0) sx sy (S.fromList [i | (i,down)<-zip [0..] (drop 1 values),down/=0]))
+    [sx,sy,rx,ry]<-map realToFrac <$> peekArray 4 axes
+    pure (I.Gamepad (head values/=0) sx sy (S.fromList [i | (i,down)<-zip [0..] (drop 1 values),down/=0]) rx ry)
   snapshot<-allocaArray 512 $ \down -> allocaArray 512 $ \pressed -> allocaArray 13 $ \raw -> do
     cInput down pressed raw
     ds<-peekArray 512 down;ps<-peekArray 512 pressed;v<-peekArray 13 raw
@@ -116,7 +119,8 @@ frameTime w=do
   writeIORef (uiState w) state {frameInput=snapshot,replay=nextReplay}
   mute<-key w 77 True
   when mute (mapM_ Audio.toggleMute (audio w))
-  realToFrac <$> cDt
+  -- Replays are frame-indexed at 60 Hz so gameplay evidence is reproducible.
+  case nextReplay of Just _->pure (1/60);Nothing->realToFrac <$> cDt
   where
     advanceReplay (Replay p count index frame)=do
       let dispatch i | i>=count=pure i
@@ -237,3 +241,9 @@ takeGizmoEdit :: Window -> IO (Maybe Gizmo.Edit)
 takeGizmoEdit w=withRenderer w R.takeGizmoEdit
 getMouse :: Window -> IO Mouse
 getMouse w=do s<-readIORef (uiState w);pure (I.pointer (frameInput s)) {mouseEnabled=enabled s && focusedText s==Nothing}
+
+inputSnapshot :: Window -> IO I.FrameInput
+inputSnapshot w=do
+  checkWindow w
+  state<-readIORef (uiState w)
+  pure (if focusedText state/=Nothing then I.emptyFrame else frameInput state)

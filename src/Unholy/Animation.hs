@@ -5,6 +5,7 @@ module Unholy.Animation
     loadRig,
     validateAnimator,
     advanceAnimators,
+    crossfade,
     sampleGlobals,
     rigMeshes,
     rigClips,
@@ -35,7 +36,7 @@ import qualified Data.Vector.Storable as VS
 import Linear
 import qualified Unholy.Asset.GLTF as Asset
 import Unholy.Asset.GLTF.Internal
-import Unholy.Types (Animator (..), World (..))
+import Unholy.Types (AnimationBlend (..), Animator (..), World (..), finite)
 
 loadRig :: FilePath -> IO Rig
 loadRig path = do
@@ -53,12 +54,34 @@ trs :: V3 Float -> Quaternion Float -> V3 Float -> M44 Float
 trs t q (V3 x y z) = mkTransformation q t !*! V4 (V4 x 0 0 0) (V4 0 y 0 0) (V4 0 0 z 0) (V4 0 0 0 1)
 
 validateAnimator :: Rig -> Animator -> Either String ()
-validateAnimator rig a
-  | null (animationClip a) || M.member (animationClip a) (rigClips rig) = Right ()
-  | otherwise = Left ("Unknown animation clip: " ++ animationClip a)
+validateAnimator rig a = mapM_ check (animationClip a : maybe [] ((: []) . blendClip) (animationBlend a))
+  where
+    check key
+      | null key || M.member key (rigClips rig) = Right ()
+      | otherwise = Left ("Unknown animation clip: " ++ key)
+
+-- Repeated requests for the same clip do not restart its clock or fade.
+-- A new request replaces the prior fade, keeping only two local poses.
+crossfade :: Float -> String -> Animator -> Animator
+crossfade duration clip a
+  | clip == animationClip a = a
+  | otherwise =
+      a
+        { animationClip = clip,
+          animationTime = 0,
+          animationBlend =
+            if finite duration && duration > 0 then Just (AnimationBlend (animationClip a) (animationTime a) 0 (min 30 duration)) else Nothing
+        }
 
 advanceAnimators :: Float -> World -> World
-advanceAnimators dt w = w {animators = IM.map (\a -> if animationPlaying a then a {animationTime = animationTime a + dt * animationRate a} else a) (animators w)}
+advanceAnimators dt w = w {animators = IM.map advance (animators w)}
+  where
+    advance a
+      | not (animationPlaying a) = a
+      | otherwise = a {animationTime = animationTime a + dt * animationRate a, animationBlend = animationBlend a >>= advanceBlend a}
+    advanceBlend a b
+      | blendElapsed b + dt >= blendDuration b = Nothing
+      | otherwise = Just b {blendTime = blendTime b + dt * animationRate a, blendElapsed = blendElapsed b + dt}
 
 sampleGlobals :: Rig -> Animator -> V.Vector (M44 Float)
 sampleGlobals rig a = runST $ do
@@ -69,17 +92,26 @@ sampleGlobals rig a = runST $ do
     MV.write result i value
   V.freeze result
   where
-    clip = M.lookup (animationClip a) (rigClips rig)
-    time = maybe 0 (\c -> if animationLoop a && clipDuration c > 0 then animationTime a `mod'` clipDuration c else min (animationTime a) (clipDuration c)) clip
-    channels = maybe [] clipChannels clip
-    changes = foldl' (\table c -> IM.insertWith (++) (channelNode c) [(channelPath c, sample time c)] table) IM.empty channels
+    changes key at =
+      let clip = M.lookup key (rigClips rig)
+          time = maybe 0 (\c -> if animationLoop a && clipDuration c > 0 then at `mod'` clipDuration c else min at (clipDuration c)) clip
+       in foldl' (\table c -> IM.insertWith (++) (channelNode c) [(channelPath c, sample time c)] table) IM.empty (maybe [] clipChannels clip)
+    current = changes (animationClip a) (animationTime a)
+    source = fmap (\b -> (changes (blendClip b) (blendTime b), max 0 (min 1 (blendElapsed b / blendDuration b)))) (animationBlend a)
     locals = V.imap local (rigNodes rig)
-    local i n = case IM.lookup i changes of
-      Nothing -> nodeMatrix n
-      Just values ->
-        let vec path fallback = maybe fallback (\(V4 x y z _) -> V3 x y z) (lookup path values)
-            q = maybe (nodeRotation n) quaternion (lookup "rotation" values)
-         in trs (vec "translation" (nodeTranslation n)) q (vec "scale" (nodeScale n))
+    pose table i n =
+      let values = IM.findWithDefault [] i table
+          vec path fallback = maybe fallback (\(V4 x y z _) -> V3 x y z) (lookup path values)
+       in (vec "translation" (nodeTranslation n), maybe (nodeRotation n) quaternion (lookup "rotation" values), vec "scale" (nodeScale n))
+    local i n
+      | matrixNode n = nodeMatrix n
+      | otherwise =
+          let (t, q, s) = pose current i n
+           in case source of
+                Nothing -> trs t q s
+                Just (table, weight) ->
+                  let (oldT, oldQ, oldS) = pose table i n
+                   in trs (lerp weight oldT t) (slerp oldQ q weight) (lerp weight oldS s)
     sample t c
       | VS.length (keyTimes c) == 1 || t <= VS.head (keyTimes c) = VS.head (keyValues c)
       | t >= VS.last (keyTimes c) = VS.last (keyValues c)

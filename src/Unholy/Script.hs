@@ -1,30 +1,35 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE OverloadedStrings #-}
-module Unholy.Script (Runtime, startRuntime, startRuntimeWith, stopRuntime, stepRuntime) where
+module Unholy.Script (Runtime, startRuntime, startRuntimeWith, startRuntimeIn, startRuntimeForLevel, stopRuntime, stepRuntime, frameRuntime, runtimePresentation, runtimeInteractive, runtimePaused, takeCommands, defaultSaveRoot) where
 
 import qualified Unholy.Animation as Animation
 import Unholy.Types
 import Unholy.Physics
 import qualified Unholy.Game as Game
-import Unholy.Input (Input(..))
+import Unholy.Input (Input(..),ActionFrame)
+import System.Directory (getXdgDirectory,XdgDirectory(XdgData))
+import System.Environment (lookupEnv)
 import qualified Unholy.Script.API as API
 import qualified Unholy.Audio as Audio
 import qualified Unholy.Resource as Resource
 import qualified HsLua.Core as Lua
 import qualified Data.IntMap.Strict as IM
 import Data.IORef
+import Data.Aeson (Value)
+import Control.DeepSeq (force)
 import Foreign.Ptr (Ptr, castPtr)
 import Foreign.C (CInt(..))
 import System.FilePath ((</>))
 import Control.Monad (foldM, when, void)
-import Control.Exception (try, onException, finally, mask, mask_, catch, SomeException, displayException)
+import Control.Exception (try, onException, finally, mask, mask_, catch, SomeException, displayException,evaluate)
 import System.IO (hPutStrLn,stderr)
 
 data VM = VM FilePath Lua.State Lua.Reference API.Context (IORef Bool)
 data Runtime = Runtime
   { virtualMachines :: IM.IntMap VM, physics :: Physics
   , projectRoot :: FilePath, disabledScripts :: IM.IntMap FilePath
-  , audioEngine :: Maybe Audio.Engine, runningGame :: Maybe Game.RunningGame, clock :: Float, ownedVMs :: IORef (IM.IntMap VM), runtimeClosed :: IORef Bool, gameScope :: Resource.Scope }
+  , audioEngine :: Maybe Audio.Engine, runningGame :: Maybe Game.RunningGame, clock :: Float, ownedVMs :: IORef (IM.IntMap VM), runtimeClosed :: IORef Bool, gameScope :: Resource.Scope, savePath :: FilePath, levelEntry :: Bool
+  , presentation :: IORef Game.Presentation, paused :: IORef Bool, commands :: IORef [Game.Command], transitionData :: Maybe Value }
 foreign import ccall unsafe "hj_lua_budget" cBudget :: Ptr () -> CInt -> IO ()
 budget :: Lua.State -> Bool -> IO ()
 budget (Lua.State ptr) enabled = cBudget (castPtr ptr) (if enabled then 1 else 0)
@@ -38,7 +43,21 @@ vmPath (VM path _ _ _ _) = path
 startRuntime :: FilePath -> Project -> IO (Runtime,Project,[String])
 startRuntime = startRuntimeWith [] Nothing
 startRuntimeWith :: [Game.SomeGame] -> Maybe Audio.Engine -> FilePath -> Project -> IO (Runtime,Project,[String])
-startRuntimeWith registry sound root p = mask $ \restore -> do
+startRuntimeWith registry sound root p = do
+  saves<-defaultSaveRoot "player" p
+  startRuntimeIn registry sound root saves False p
+
+defaultSaveRoot :: String -> Project -> IO FilePath
+defaultSaveRoot namespace p=do
+  override<-lookupEnv "UNHOLY_SAVE_DIR"
+  base<-maybe (getXdgDirectory XdgData "unholy") pure override
+  pure (base </> namespace </> maybe "lua-project" id (haskellGame p))
+
+startRuntimeIn :: [Game.SomeGame] -> Maybe Audio.Engine -> FilePath -> FilePath -> Bool -> Project -> IO (Runtime,Project,[String])
+startRuntimeIn registry sound root saves entry=startRuntimeForLevel registry sound root saves entry Nothing
+
+startRuntimeForLevel :: [Game.SomeGame] -> Maybe Audio.Engine -> FilePath -> FilePath -> Bool -> Maybe Value -> Project -> IO (Runtime,Project,[String])
+startRuntimeForLevel registry sound root saves entry payload p = mask $ \restore -> do
   either (ioError.userError) pure (Game.validateGame registry p)
   definition<-either (ioError.userError) pure (Game.findGame registry p)
   missing<-Game.checkGameAssets registry root p
@@ -47,17 +66,21 @@ startRuntimeWith registry sound root p = mask $ \restore -> do
   owned<-newIORef IM.empty
   closed<-newIORef False
   scope<-Resource.newScope
-  let ctx=Game.GameContext root phy sound scope
+  screen<-newIORef Game.emptyPresentation
+  pause<-newIORef False
+  pending<-newIORef []
+  let base=Runtime IM.empty phy root IM.empty sound Nothing 0 owned closed scope saves entry screen pause pending payload
+      ctx=runtimeContext base
       cleanup=Resource.closeScope scope `finally` ((readIORef owned >>= mapM_ closeVM) `finally` (closePhysics phy `finally` mapM_ Audio.stopOn sound))
       initialize=do
         (active,prepared,startLogs)<-case definition of
           Nothing->pure (Nothing,p,[])
           Just g->do
             (running,next,effects)<-Game.startGame ctx g p
-            (logs,_)<-Game.applyEffects ctx effects
+            (logs,_)<-runtimeEffects base effects
             pure (Just running,next,logs)
         configurePhysics phy (physicsSettings prepared)
-        let runtime=Runtime IM.empty phy root IM.empty sound active 0 owned closed scope
+        let runtime=base {runningGame=active}
         (r,next,logs,_)<-reconcile runtime prepared
         synchronizePhysics phy (world next)
         pure (r,next,startLogs++logs)
@@ -145,11 +168,11 @@ stepRuntime dt input r p = do
     runGame after events runtime current=case runningGame runtime of
       Nothing->pure (runtime,current,[],"")
       Just running->do
-        let ctx=Game.GameContext (projectRoot runtime) (physics runtime) (audioEngine runtime) (gameScope runtime)
+        let ctx=runtimeContext runtime
             values=input++repeat 0
             controls=Input (values!!0) (values!!1) (values!!2>0.5) (values!!3>0.5) (values!!4>0.5)
         (updated,next,effects)<-Game.tickGame after events ctx (Game.Step dt (clock runtime+dt)) controls running current
-        (logs,hud)<-Game.applyEffects ctx effects
+        (logs,hud)<-runtimeEffects runtime effects
         pure (runtime {runningGame=Just updated},next,logs,hud)
     update acc@(runtime,current,logs,hud) (e,vm)
       | IM.lookup e (scripts (world current))/=Just (vmPath vm) = pure acc
@@ -205,3 +228,41 @@ runScript (VM _ state ref ctx _) e callback event dt input p = do
       let cam=camera next
           validCam=if validV (eye cam) && validV (target cam) && eye cam/=target cam then cam else camera p
       pure (next {camera=validCam},logs,hud,True)
+
+runtimeContext :: Runtime -> Game.GameContext
+runtimeContext r=Game.GameContext (projectRoot r) (physics r) (audioEngine r) (gameScope r) (savePath r) (levelEntry r) (transitionData r)
+runtimeEffects :: Runtime -> [Game.Effect] -> IO ([String],String)
+runtimeEffects r effects=do
+  -- Force published UI and command data inside gameplay exception containment.
+  mapM_ forceControl effects
+  result<-Game.applyEffects (runtimeContext r) effects
+  mapM_ apply effects
+  pure result
+  where
+    forceControl (Game.Present value)=evaluate (force (Game.gamePrompt value,fmap (\panel->(Game.panelTitle panel,Game.panelBody panel,Game.panelButtons panel)) (Game.gamePanel value))) >> pure ()
+    forceControl (Game.Request (Game.LoadLevel key))=evaluate (force key) >> pure ()
+    forceControl (Game.Request (Game.LoadLevelWith key payload))=evaluate (force (key,payload)) >> pure ()
+    forceControl _=pure ()
+    apply (Game.Present value)=writeIORef (presentation r) value
+    apply (Game.PauseSimulation value)=writeIORef (paused r) value >> mapM_ (\sound->Audio.pauseOn sound value) (audioEngine r)
+    apply (Game.Request value)=modifyIORef' (commands r) (++[value])
+    apply _=pure ()
+runtimePresentation :: Runtime -> IO Game.Presentation
+runtimePresentation=readIORef . presentation
+runtimePaused :: Runtime -> IO Bool
+runtimePaused=readIORef . paused
+runtimeInteractive :: Runtime -> Bool
+runtimeInteractive=maybe False Game.interactiveGame . runningGame
+takeCommands :: Runtime -> IO [Game.Command]
+takeCommands r=atomicModifyIORef' (commands r) (\xs->([],xs))
+frameRuntime :: Float -> ActionFrame -> Runtime -> Project -> IO (Runtime,Project,[String],String)
+frameRuntime dt input r p=do
+  dead<-readIORef (runtimeClosed r)
+  when dead (ioError (userError "Runtime is closed"))
+  when (not (finite dt) || dt<0) (ioError (userError "Frame time must be finite and nonnegative"))
+  case runningGame r of
+    Nothing->pure (r,p,[],"")
+    Just running->do
+      (active,next,effects)<-Game.frameGame (runtimeContext r) dt input running p
+      (logs,hud)<-runtimeEffects r effects
+      pure (r {runningGame=Just active},next,logs,hud)

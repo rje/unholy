@@ -42,7 +42,7 @@ typedInputComponents=do
   assert "Default keyboard bindings" (gameInput False input==expected)
   assert "Text focus suppresses game controls" (gameInput True input==Input 0 0 False False False)
   assert "Opposing bindings cancel" (moveX (gameInput False input {heldKeys=S.fromList [65,68]})==0)
-  let pad=emptyFrame {gamepad=Gamepad True 1 (-1) (S.fromList [7,8,15])}
+  let pad=emptyFrame {gamepad=Gamepad True 1 (-1) (S.fromList [7,8,15]) 0 0}
       analog=gameInput False pad
       magnitude=sqrt (moveX analog^2+moveZ analog^2)
   assert "Controller radial clamping" (abs (magnitude-1)<0.0001 && jump analog && restart analog && action analog)
@@ -51,6 +51,13 @@ typedInputComponents=do
   assert "Controller focus suppression" (gameInput True pad==Input 0 0 False False False)
   assert "Keyboard and controller axes clamp" (moveX (gameInput False pad {heldKeys=S.singleton 68})==1)
   assert "Held controller buttons persist across fixed ticks" (all jump (replicate 4 (gameInput False pad)))
+  let actions=actionFrame defaultBindings 0.1 emptyFrame input
+      heldAgain=actionFrame defaultBindings 0.1 input input
+      released=actionFrame defaultBindings 0.1 input emptyFrame
+  assert "Action edges must be consumed once" (actionPressed "jump" actions && not (actionPressed "jump" heldAgain))
+  assert "Custom action bindings" (actionPressed "custom" (actionFrame [Binding "custom" [69] []] 0 emptyFrame input))
+  assert "Released action missing" (not (null (releasedActions released)))
+  assert "Disconnected right stick moved camera" (lookDelta (actionFrame defaultBindings 1 emptyFrame emptyFrame {gamepad=Gamepad False 0 0 S.empty 1 1})==(0,0))
   let (e,w)=spawn "Typed entity" emptyWorld
       components=ECS.insert e (42::Int) ECS.empty
   assert "Game-owned typed component lookup" (ECS.lookup e components==Just 42)

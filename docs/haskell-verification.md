@@ -2,19 +2,55 @@
 
 ## Current qualification
 
-The current macOS checkpoint builds the library, editor, benchmark and three
-independently packaged games. `make test` passes 23 engine integration groups
-and the Pulse Courier, Circuit Breaker and Threshold gameplay tests. `make render-test`
-passes 21 groups in a real graphics/audio context. Editor replay checks cover
-failure recovery, authored component fields/links, gizmo undo/prefabs and
-imported material policy, animation configuration and finite terrain authoring.
-Both shared suites now load all eight checked-in demo projects from
-`test/Samples.hs`, rather than only the original three. Feature Courtyard exposes
-independent animation phases, paused poses, HDR roughness, 128 shared columns
-and finite terrain through the normal Load/Play workflow. Its actual editor
-Load/Play/Stop/Build and relocated export captures live in
-`build/verification/demos/`. The sections below retain the earlier checkpoints
-and their measured evidence.
+The current macOS checkpoint builds the library, editor, benchmark and four
+independently packaged games. `make test` passes 24 engine integration groups
+and Pulse Courier, Circuit Breaker, Threshold and Last Cue. `make render-test`
+passes 22 groups in a real graphics/audio context, including all ten checked-in
+demos. Editor replay checks cover failure recovery, authored component fields,
+gizmo undo/prefabs, imported materials, animation and finite terrain authoring.
+The sections below retain earlier checkpoints and their measured evidence.
+
+### Last Cue: sessions, checkpoints, character movement and clip fades
+
+The two-act theatre game uses original meshes, an articulated stagehand, six
+synthesized sounds and generated wood/velvet textures. Historical reference and
+asset provenance are recorded in [ART.md](../projects/last-cue/ART.md).
+
+- Headless gameplay physically traverses both acts, collects both cue pairs,
+  operates each winch, rides Bullet lifts, whistles at the performer and reaches
+  the ending. A fresh session restores Act II; pause freezes the world;
+  a stationary player is captured and Retry restores its stage mark.
+- An unwritable save destination permits New/Retry with a visible warning and
+  transient checkpoint handoff. Core tests reject corrupt saves and preserve
+  the prior checkpoint after an encoding failure.
+- Session contracts cover failed preflight, failed initialization and retry,
+  once-only cleanup, held-confirm leakage, cancellation during initialization,
+  lazy UI payloads and camera-relative movement at a quarter-turn orbit.
+  Declared level-only glTF/HDR dependencies outside assets/ export completely.
+- The real GPU test compares an intermediate local-TRS blend with the CPU
+  reference in both PBR and shadow depth, proves completion updates both passes,
+  and retains immutable bind geometry and independent palettes. Ordinary draws
+  still do not force the on-demand CPU deformation arrays.
+- `scripts/verify-last-cue.py` drives the actual Load picker, Play, both-act
+  completion, Stop and Build. The entry scene hash remains unchanged. All level
+  manifests/assets agree in the export, which completes when launched from
+  `/tmp`. A new exported-player process resumes Act II and displays Intermission.
+  Captures were visually inspected under `build/verification/last-cue/`.
+
+Astra's source review found material input, UI forcing, resource handoff, export
+validation and save-failure issues; all were fixed before qualification. A
+separate editor-lifetime session owner now covers failure before immutable
+editor-state publication, and the player brackets its complete session lifetime.
+The review is separate from the tests and desktop evidence above.
+
+Limits: the motor uses bounded solid rays for steps/camera; pursuit uses line of
+sight and short obstacle probes without navmesh routing. Crossfades retain two
+local poses, without graphs/additive layers/root motion. Replays have a fixed
+60 Hz simulation clock; these checks do not establish FPS, large-game scalability
+or physical-controller behavior. Native replay verifies both sticks, button
+mapping, text-focus suppression and disconnect neutrality. Subsequent automation
+uses `UNHOLY_WINDOW_HIDDEN=1`; the final change adding hidden/unfocused creation
+flags was compiled without another local graphics run.
 
 macOS qualification uses Apple M4, GHC 9.14.1, raylib 6.0, Bullet 3.25 and
 Cabal's bundled Lua 5.4.8. Ubuntu 24.04 headless CI passes the library/editor

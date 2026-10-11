@@ -17,7 +17,7 @@ import System.Environment (getExecutablePath)
 import System.Process (readProcess, callProcess)
 import System.Info (os)
 import Data.Char (isAlphaNum, toLower)
-import Data.List (nub, isPrefixOf)
+import Data.List (nub, isPrefixOf, isSuffixOf)
 import Text.Read (readMaybe)
 
 projectFile :: FilePath
@@ -36,7 +36,7 @@ projectJSON p = Object
     entity (e,n) = Object $ [("id",int e),("name",String n),("transform",trans (transforms w IM.! e))]
       ++ optional "mesh" (\m -> Object [("geometry",String (geometry m)),("texture",String (texture m)),("importMaterials",Boolean (useImportedMaterials m))]) (IM.lookup e (meshes w))
       ++ optional "terrain" (\t -> Object [("width",int (terrainWidth t)),("depth",int (terrainDepth t)),("spacing",num (terrainSpacing t)),("heights",Array (map num (terrainHeights t)))]) (IM.lookup e (terrains w))
-      ++ optional "animator" (\a -> Object [("clip",String (animationClip a)),("time",num (animationTime a)),("rate",num (animationRate a)),("loop",Boolean (animationLoop a)),("playing",Boolean (animationPlaying a))]) (IM.lookup e (animators w))
+      ++ optional "animator" (\a -> Object $ [("clip",String (animationClip a)),("time",num (animationTime a)),("rate",num (animationRate a)),("loop",Boolean (animationLoop a)),("playing",Boolean (animationPlaying a))] ++ optional "blend" (\b->Object [("clip",String (blendClip b)),("time",num (blendTime b)),("elapsed",num (blendElapsed b)),("duration",num (blendDuration b))]) (animationBlend a)) (IM.lookup e (animators w))
       ++ optional "material" mat (IM.lookup e (materials w))
       ++ optional "script" String (IM.lookup e (scripts w))
       ++ optional "authored" (Object . map (\(key,fields)->(key,Object [(k,fieldJSON value) | (k,value)<-M.toAscList fields])) . M.toAscList) (IM.lookup e (authored w))
@@ -101,7 +101,7 @@ decodeProject input = do
       let optional k decode = traverse decode (lookup k fields)
       m <- optional "mesh" (\o -> Mesh <$> (field "geometry" o >>= string) <*> (field "texture" o >>= string) <*> maybe (Right False) boolean (lookup "importMaterials" =<< either (const Nothing) Just (object o)))
       terrain <- optional "terrain" (\o -> Terrain <$> (field "width" o >>= integer) <*> (field "depth" o >>= integer) <*> floatField "spacing" o <*> (field "heights" o >>= array >>= mapM (number >=> finiteFloat)))
-      animator <- optional "animator" (\o -> Animator <$> (field "clip" o >>= string) <*> floatField "time" o <*> floatField "rate" o <*> (field "loop" o >>= boolean) <*> (field "playing" o >>= boolean))
+      animator <- optional "animator" (\o -> Animator <$> (field "clip" o >>= string) <*> floatField "time" o <*> floatField "rate" o <*> (field "loop" o >>= boolean) <*> (field "playing" o >>= boolean) <*> optionalField "blend" (field "blend" o >>= \b->Just <$> (AnimationBlend <$> (field "clip" b >>= string) <*> floatField "time" b <*> floatField "elapsed" b <*> floatField "duration" b)) Nothing o)
       mat <- optional "material" (\o -> Material <$> vfield "albedo" o <*> floatField "metallic" o <*> floatField "roughness" o <*> floatField "emission" o)
       script <- optional "script" string
       gameData <- optional "authored" (\o->object o >>= mapM (\(key,value)->do
@@ -258,7 +258,13 @@ buildProjectWithAssets extra root engineAssets p = ioEither $ do
   invalid<-checkAssets root p
   unless (null invalid) (ioError (userError (unlines invalid)))
   importedRefs<-expandedAssetReferences root (world p)
-  let refs=nub (importedRefs++projectAssetReferences p++extra)
+  levelRefs<-fmap concat $ forM [path | path<-extra,".hj.json" `isSuffixOf` path] $ \path->do
+    level<-loadProject (root </> path) >>= either (ioError.userError) pure
+    invalidLevel<-checkAssets root level
+    unless (null invalidLevel) (ioError (userError (unlines invalidLevel)))
+    dependencies<-expandedAssetReferences root (world level)
+    pure (projectAssetReferences level++dependencies)
+  let refs=nub (importedRefs++projectAssetReferences p++levelRefs++extra)
   missing<-checkAssetFiles root refs
   unless (null missing) (ioError (userError (unlines missing)))
   let output=root </> "dist" </> slug (projectName p)

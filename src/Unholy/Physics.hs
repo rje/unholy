@@ -1,7 +1,7 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 module Unholy.Physics
   ( Physics, Contact(..), CollisionEvent(..), RayHit(..), createPhysics, createPhysicsAt, closePhysics
-  , configurePhysics, requestTeleport, synchronizePhysics, stepPhysics, collisionEvents, raycastPhysics, bodyCount ) where
+  , configurePhysics, requestTeleport, synchronizePhysics, stepPhysics, collisionEvents, raycastPhysics, raycastSolid, bodyCount ) where
 
 import Unholy.Types
 import Unholy.Transform
@@ -37,7 +37,7 @@ foreign import ccall unsafe "hj_body_velocity" cVelocity :: Ptr () -> Ptr CFloat
 foreign import ccall unsafe "hj_body_read" cRead :: Ptr () -> Ptr CFloat -> IO ()
 foreign import ccall unsafe "hj_physics_step" cStep :: Ptr () -> CFloat -> IO ()
 foreign import ccall unsafe "hj_physics_contacts" cContacts :: Ptr () -> Ptr CInt -> Ptr CFloat -> CInt -> IO CInt
-foreign import ccall unsafe "hj_physics_ray" cRay :: Ptr () -> Ptr CFloat -> Ptr CFloat -> CInt -> Ptr CFloat -> IO CInt
+foreign import ccall unsafe "hj_physics_ray" cRay :: Ptr () -> Ptr CFloat -> Ptr CFloat -> CInt -> CInt -> Ptr CFloat -> IO CInt
 floats :: [Float] -> (Ptr CFloat -> IO a) -> IO a
 floats xs=withArray (map realToFrac xs)
 poseData :: Transform -> [Float]
@@ -166,10 +166,14 @@ stepPhysics p dt input = do
           b=(bodies w IM.! e) {velocity=fromListV (drop 7 xs),grounded=IM.member e supported}
       pure native {lastTransform=t,lastBody=b}
 raycastPhysics :: Physics -> World -> V3 -> V3 -> Maybe Entity -> IO (Maybe RayHit)
-raycastPhysics p w from to ignore = do
+raycastPhysics=raycastWith False
+raycastSolid :: Physics -> World -> V3 -> V3 -> Maybe Entity -> IO (Maybe RayHit)
+raycastSolid=raycastWith True
+raycastWith :: Bool -> Physics -> World -> V3 -> V3 -> Maybe Entity -> IO (Maybe RayHit)
+raycastWith solids p w from to ignore = do
   synchronize p (resolveWorld w)
   if from==to then pure Nothing else floats (vlist from) $ \a -> floats (vlist to) $ \b -> allocaArray 7 $ \d -> do
-    e<-cRay (nativeWorld p) a b (maybe 0 fromIntegral ignore) d
+    e<-cRay (nativeWorld p) a b (maybe 0 fromIntegral ignore) (if solids then 1 else 0) d
     if e==0 then pure Nothing else do
       xs<-map realToFrac <$> peekArray 7 d
       pure (Just (RayHit (fromIntegral e) (fromListV (take 3 xs)) (fromListV (take 3 (drop 3 xs))) (xs!!6)))

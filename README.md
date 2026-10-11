@@ -3,7 +3,7 @@
 A small native Haskell 3D engine with a Unity-inspired editor, PBR materials and HDR environment lighting,
 Lua scripting, a typed ECS, Bullet physics, and load/save/build/play projects.
 Named in honor of the original game jam. This is an experimental engine,
-with eight playable/inspectable projects and a small native desktop editor.
+with ten playable/inspectable projects and a small native desktop editor.
 
 ## Run on macOS
 
@@ -87,6 +87,7 @@ during play. Restart play after modifying a Lua source file to reload it.
 | --- | --- | --- |
 | Material Lab | Inspect the two rows of spheres and animated ring | GGX metal/roughness, point lights, emissive materials, Lua animation |
 | Material Gallery | Inspect six sculpted reliquaries | Static glTF submesh material slots, float factors, sRGB color textures, packed metallic/roughness source, normal maps, explicit entity overrides, HDR environment lighting |
+| [Last Cue](projects/last-cue/README.md) | Collect brass cue keys, operate scenery winches, ride lifts through two acts and evade a mechanical performer | Research-led original theatre art, Haskell session menus/actions, level transitions, durable checkpoints, orbital capsule camera, chase/stun/capture and GPU animation crossfades |
 | [Animation Lab](projects/animation-lab/README.md) | Compare Survey/Walk/Run, change clips in the inspector and inspect the gold head tag | Conventional textured Fox import, 22 independent GPU poses, shared bind geometry, rigid joint attachments and animated shadows |
 | [Feature Courtyard](projects/feature-courtyard/README.md) | Compare four animated travelers, edit terrain and inspect the roughness row / column grove | Independent animation phases and paused pose, HDR reflections, finite terrain/heightfield, 128 instanced columns, Lua sculpture |
 | Marble Run / Aether Gardens | Follow the blue lights, jump the gap, reach the checkpoint, cross the sliding bridge to the gold arch; ride the left lift to the bonus balcony | Textured beveled decks and suspended gardens, sun shadows/fog, kinematic platforms and rotating sweeper, parented platform assemblies, trigger checkpoints/finish, collectible gem prefabs, runtime crate spawning/destruction, collision sounds and ambience, win/restart |
@@ -98,10 +99,12 @@ during play. Restart play after modifying a Lua source file to reload it.
 See the [feature-to-demo map](projects/README.md) for what to try. New visible
 features ship with a checked-in demo, instructions and a working editor/export
 path; an existing demo can be extended. The shared headless and graphics checks
-load all eight included projects. [Contributor guidance](AGENTS.md) keeps this
+load all ten included projects. [Contributor guidance](AGENTS.md) keeps this
 requirement in the development workflow.
 
-All games use **WASD/arrows**, **Space** to jump/hop, and **R** to restart.
+The earlier games use **WASD/arrows**, **Space** to jump/hop, and **R** to restart.
+Last Cue uses WASD, Space, E, an orbital camera and Escape for its pause menu;
+its README lists keyboard and controller controls.
 A controller's left stick also moves; A/Cross jumps, X/Square acts and Start
 restarts. Default controller mapping is implemented in Haskell with a radial
 dead zone, per-axis keyboard/stick clamping, held buttons and focus suppression.
@@ -217,7 +220,9 @@ the editor, play state, undo/redo, the fixed 120 Hz simulation loop, and the 3D
 renderer, scripting API, audio resource/playback management, physics body
 lifetime/policy, collision-event dispatch, prefabs, parent transforms, primitive
 geometry, input bindings, replay timing, text focus/edit buffers, clipping interaction
-and the editor theme. Window, renderer and audio ownership is explicit; Haskell
+and the editor theme. Haskell also owns session menus, frame action edges, level
+handoff, atomic game checkpoints, camera-relative character movement and local
+TRS animation crossfades. Window, renderer and audio ownership is explicit; Haskell
 uses no global engine singleton. Components
 are **Name, Transform, Parent, Mesh, Material, Script, Light, Body, Animator and Terrain**, with an
 **Authored** store for registered game `Component a` fields. Systems join the
@@ -349,8 +354,10 @@ expand triangle corners for flat shading; the resulting primitive must fit
 also respect the device texture-buffer capacity. Tangents are accepted; PBR uses
 its existing derivative tangent basis. LINEAR/STEP tracks support translation,
 rotation and positive scale. Vertex colors, additional UV sets, more than four
-influences, negative scales, required extensions, morphs, cubic tracks, blending
-and root motion remain unsupported. Use primitive gameplay colliders for animated
+influences, negative scales, required extensions, morphs, cubic tracks, additive layers, animation graphs
+and root motion remain unsupported. `Animation.crossfade` blends two clips in
+local TRS before hierarchy evaluation; rotations use shortest-path slerp. Last
+Cue demonstrates idle/walk/jump fades, which retain GPU deformation and shadows. Use primitive gameplay colliders for animated
 characters. The [verification report](docs/haskell-verification.md) separates
 component measurements from moving-scene draw timings; this is a bounded demo,
 not a large-crowd scalability claim.
@@ -402,7 +409,7 @@ The four development targets now have checkpoints against these limits:
    and actual editor authoring/export checks.
 
 All four targets have working checkpoints within the limits above. Animation
-blending, terrain brushes/LOD/streaming, richer asset import and
+graphs/additive layers, terrain brushes/LOD/streaming, richer asset import and
 broader desktop platform qualification remain future work. Measurements and clean
 public-package qualification are in [the current verification report](docs/haskell-verification.md).
 
@@ -417,9 +424,10 @@ The next priorities are:
 2. Finish viewport authoring: place prefabs on picked surfaces and add a bounded
    terrain height brush with one undo entry per drag. Qualify a route assembled,
    sculpted, saved and played through the editor/export workflow.
-3. Persist bindings for the existing keyboard/controller actions and turn the
-   traveler toward movement. Qualify remapping, focus/disconnect and completion
-   with both input paths.
+3. Last Cue now demonstrates frame actions, facing/orbital movement, session UI,
+   two levels, atomic progress saves and two-clip GPU animation fades. Persisted
+   binding authoring, navmesh navigation and broader character-controller
+   qualification remain future work.
 
 Profile a moving animated route before choosing additional renderer optimization;
 the earlier component workloads do not measure its combined cost.
@@ -450,15 +458,22 @@ kinematic lift and that the moving bridge and its decorations animate. The
 headless tests also cover live references, instance isolation, failed-call
 rollback, audio-path errors, overlapping voices, cache reuse, pause/mute and
 cleanup through an injected device backend.
+Last Cue adds actual two-act completion, chase/capture/retry, fresh-session
+Continue and unwritable-save play. Shared contracts cover transition failure,
+held confirmation, lazy UI faults, cancellation, camera orbit directions and
+checkpoint replacement.
 `make render-test` opens a real graphics context and checks GPU pixel changes
 from live PBR edits, shadow depth output, UI state preservation, cached mesh
 reuse, viewport resizing, picking, all sample projects, asset/shader error
 handling, project-switch cleanup and renderer disposal. It also verifies
 that sample sounds managed by Haskell produce nonzero native mixer output.
 Captures go to
-`build/verification/haskell-renderer/`. This suite requires a desktop display.
+`build/verification/haskell-renderer/`. This suite uses a hidden, unfocused window and requires an available graphics
+display (or Xvfb on Linux). It does not take focus from your desktop. Set
+`UNHOLY_WINDOW_HIDDEN=1` for automated editor/player replay commands too.
 `scripts/generate-samples.py` regenerates the checked-in scene data.
-`--replay` uses raylib's native automation-event format. The checked-in editor
+`--replay` uses raylib's native automation-event format with a fixed 60 Hz
+simulation clock. It does not measure wall-clock frame performance. The checked-in editor
 smoke replay drives toolbar clicks, pause/step/stop, project selection, keyboard
 movement and a window resize, captures screenshots and closes the window.
 `scripts/verify-authoring.py` creates a disposable project under `build/`, drives

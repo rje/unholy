@@ -2,6 +2,7 @@
 module Unholy
   ( module Unholy.Engine, module Unholy.Types, module Unholy.Transform, module Unholy.Game
   , module Unholy.Input, module Unholy.Physics
+  , module Unholy.Character
   , module Unholy.Terrain
   , module Unholy.Authoring
   , stepGame, Runtime, startRuntimeWith, stepRuntime, stopRuntime, runApplication
@@ -13,6 +14,7 @@ import Unholy.Transform
 import Unholy.Game
 import Unholy.Input
 import Unholy.Physics
+import Unholy.Character
 import Unholy.Terrain
 import Unholy.Authoring
 import Unholy.Script (Runtime,startRuntimeWith,stepRuntime,stopRuntime)

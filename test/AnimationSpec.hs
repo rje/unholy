@@ -41,6 +41,14 @@ animationContracts = do
       advanced = advanceAnimators 0.5 w
       paused = advanceAnimators 0.5 w {animators = IM.singleton e saved {animationPlaying = False}}
   assert "Animator clock/pause failed" (animationTime (animators advanced IM.! e) == 0.75 && animationTime (animators paused IM.! e) == animationTime saved)
+  let fade = crossfade 1 "single" (config "move" 0 False)
+      halfway = fade {animationBlend = fmap (\b -> b {blendElapsed = 0.5}) (animationBlend fade)}
+      endpoint = fade {animationBlend = fmap (\b -> b {blendElapsed = 1}) (animationBlend fade)}
+  assert "Crossfade local translation endpoints/intermediate pose" (close (firstX fade) (-1) && close (firstX halfway) (-0.5) && close (firstX endpoint) 0)
+  assert "Repeated clip requests restarted the blend" (crossfade 1 "single" halfway == halfway)
+  assert "Paused animator advanced its blend" (animators (advanceAnimators 0.5 w {animators = IM.singleton e halfway {animationPlaying = False}}) IM.! e == halfway {animationPlaying = False})
+  assert "Completed fade retained its source pose" (animationBlend (animators (advanceAnimators 1 w {animators = IM.singleton e fade}) IM.! e) == Nothing)
+  assert "Blend persistence failed" (decodeProject (encodeProject (emptyProject "Blend") {world = w {animators = IM.singleton e halfway}}) == Right (emptyProject "Blend") {world = w {animators = IM.singleton e halfway}})
   assert "Animator clone/delete failed" (IM.size (animators duplicateWorld) == 2 && IM.null (animators (destroy e w)))
   prefab <- either (ioError . userError) pure (makePrefab e w)
   (_, _, placed) <- either (ioError . userError) pure (instantiate prefab identity emptyWorld)

@@ -13,7 +13,8 @@ import qualified Unholy.Native as N
 import Unholy.Game (SomeGame,validateGame,checkGameAssets,gameAssetReferences,gameComponents,gameIdentifier)
 import Unholy.Authoring
 import Unholy.Exception (trySync)
-import Unholy.Script
+import Unholy.Session
+import Unholy.Input (FrameInput,keyPressed)
 import qualified Data.IntMap.Strict as IM
 import qualified Data.Map.Strict as M
 import Control.Monad (foldM, forM_, when)
@@ -25,13 +26,13 @@ import Data.IORef
 import Data.List (sort, isSuffixOf, intercalate)
 import Data.Maybe (isJust)
 import Data.Time.Clock.POSIX (getPOSIXTime)
-import Control.Exception (finally, evaluate, onException)
+import Control.Exception (finally, evaluate, onException, mask_, bracket)
 import Control.DeepSeq (force)
 
 data Tab = EntityTab | WorldTab | GameTab deriving Eq
 data Modal = ProjectPicker FilePath [FilePath] | NewProject String | Unsaved FilePath | AddEntity | SavePrefab Entity FilePath deriving Eq
 data Editor = Editor
-  { document :: Project, file :: FilePath, live :: Maybe (Runtime,Project)
+  { document :: Project, file :: FilePath, live :: Maybe (Session,Project)
   , selected :: Maybe Entity, paused :: Bool, gameView :: Bool, dirty :: Bool
   , logs :: [String], hud :: String, accumulator :: Float, tab :: Tab, grid :: Bool
   , hierarchyScroll :: Float, inspectorScroll :: Float, assetScroll :: Float
@@ -40,6 +41,7 @@ data Editor = Editor
   , gameRegistry :: [SomeGame]
   , engineAssetsPath :: FilePath
   , fieldEdit :: Maybe (Int,Project)
+  , sessionOwner :: IORef (Maybe Session)
   }
 
 viewProject :: Editor -> Project
@@ -58,15 +60,16 @@ editWorld f s = change ((document s) {world=f (world (document s))}) s
 
 runEditor :: N.Window -> [SomeGame] -> FilePath -> FilePath -> Project -> Maybe Int -> Maybe FilePath -> IO ()
 runEditor window registry engineAssets path p frameLimit capture = do
+  owner<-newIORef Nothing
   a<-listAssets (takeDirectory path)
   diagnostic<-trySync (evaluate (force (either (:[]) (const []) (validateGame registry p))))
   let initial=Editor p path Nothing (fst <$> IM.lookupMin (names (world p))) False False False
-        (["Ready. Select an entity; F5 plays the project.","Unholy / Haskell renderer + Bullet + Lua"]++either (\err->[show err]) id diagnostic) "" 0 EntityTab True 0 0 0 Nothing [] [] (sort a) Gizmo.Move Nothing Nothing registry engineAssets Nothing
+        (["Ready. Select an entity; F5 plays the project.","Unholy / Haskell renderer + Bullet + Lua"]++either (\err->[show err]) id diagnostic) "" 0 EntityTab True 0 0 0 Nothing [] [] (sort a) Gizmo.Move Nothing Nothing registry engineAssets Nothing owner
   active<-newIORef initial
   loop active 0 initial `finally` (do
     latest<-readIORef active
     -- A recovery or cleanup failure must not replace the original exception.
-    cleanup<-trySync (forM_ (live latest) (stopRuntime . fst))
+    cleanup<-trySync (closeEditorSession initial)
     either (putStrLn . show) pure cleanup
     when (dirty latest) $ do
       recovery<-trySync (saveProject (file latest++".recovery") (document latest))
@@ -79,8 +82,8 @@ runEditor window registry engineAssets path p frameLimit capture = do
         forM_ capture (N.screenshot window)
       else do
         dt<-min 0.1 <$> N.frameTime window
-        input<-N.inputs window
-        stepped<-if modal s/=Nothing then pure s else protectPlay window s (advance dt input s)
+        input<-N.inputSnapshot window
+        stepped<-if modal s/=Nothing then pure s else protectPlay window s (advance window dt input s)
         writeIORef active stepped
         (w,h)<-N.dimensions window
         N.begin window
@@ -95,6 +98,8 @@ runEditor window registry engineAssets path p frameLimit capture = do
         writeIORef active placed
         chrome<-drawChrome window w h placed
         writeIORef active chrome
+        N.uiEnabled window (modal chrome==Nothing && not (paused chrome))
+        forM_ (live chrome) (\(session,_)->drawSessionUI window (230,70,w-552,h-282) session)
         N.uiEnabled window True
         next<-case modal chrome of Nothing->shortcuts window chrome;Just _->drawModal window w h chrome
         writeIORef active next
@@ -117,21 +122,18 @@ protectPlay window original action = do
       stopped<-stopPlay window original
       pure (addLog ("Runtime failure: "++show err++"\nEditable scene preserved. Fix the game and start Play again.") stopped)
 
-advance :: Float -> [Float] -> Editor -> IO Editor
-advance dt input s = case live s of
+advance :: N.Window -> Float -> FrameInput -> Editor -> IO Editor
+advance window dt input s = case live s of
   Nothing->pure s
   Just _ | paused s->pure s
-  Just (r,p)->do
-    (runtime,next,msg,status,remaining)<-steps 0 (min 0.1 (accumulator s+dt)) r p [] (hud s)
-    pure (withLogs msg s {live=Just (runtime,next),hud=status,accumulator=remaining})
-  where
-    fixed=1/120
-    steps :: Int -> Float -> Runtime -> Project -> [String] -> String -> IO (Runtime,Project,[String],String,Float)
-    steps count remaining r p msg status
-      | remaining<fixed || count>=12 = pure (r,p,msg,status,remaining)
-      | otherwise=do
-          (r',p',messages,hud')<-stepRuntime fixed input r p
-          steps (count+1) (remaining-fixed) r' p' (msg++messages) (if null hud' then status else hud')
+  Just (session,_)->do
+    before<-sessionGeneration session
+    (next,msg,status)<-advanceSession dt input session
+    after<-sessionGeneration session
+    when (before/=after) (N.clearFocus window >> N.unloadAssets window)
+    quit<-sessionQuit session
+    let updated=withLogs msg s {live=Just (session,next),hud=status}
+    if quit then stopPlay window updated else pure updated
 
 startPlay :: N.Window -> Editor -> IO Editor
 startPlay window s | isPlaying s = stopPlay window s
@@ -142,19 +144,27 @@ startPlay window s | isPlaying s = stopPlay window s
   let missing=sceneAssets++gameAssets
   let errors=missing++either (:[]) (const []) (validateGame (gameRegistry s) (document s))
   if not (null errors) then pure (withLogs errors s) else do
-    result<-trySync $ do
-      started@(runtime,_,messages)<-startRuntimeWith (gameRegistry s) (N.audio window) (takeDirectory (file s)) (document s)
-      _<-evaluate (force messages) `onException` stopRuntime runtime
-      pure started
+    result<-trySync $ mask_ $ (do
+      started@(runtime,_,messages)<-startSession "preview" (gameRegistry s) (N.audio window) (takeDirectory (file s)) (document s)
+      writeIORef (sessionOwner s) (Just runtime) `onException` closeSession runtime
+      _<-evaluate (force messages)
+      pure started) `onException` closeEditorSession s
     case result of
       Left err->pure (addLog (show err) s)
       Right (runtime,p,messages)->pure (withLogs messages (addLog "Play started. Stop restores the editable scene." s {live=Just (runtime,p),paused=False,gameView=True,hud="",accumulator=0,dragUndo=Nothing,pendingPrefab=Nothing}))
 stopPlay :: N.Window -> Editor -> IO Editor
 stopPlay window s = do
-  closed<-trySync (forM_ (live s) (stopRuntime . fst))
+  closed<-trySync (closeEditorSession s)
   N.clearFocus window
   N.unloadAssets window
   pure (either (addLog . show) (const id) closed (addLog "Play stopped." s {live=Nothing,paused=False,gameView=False,hud="",accumulator=0}))
+
+-- The editor-lifetime owner is published before fallible UI work returns an
+-- immutable Editor snapshot. Recovery can therefore close newly started Play.
+closeEditorSession :: Editor -> IO ()
+closeEditorSession s=mask_ $ do
+  owned<-atomicModifyIORef' (sessionOwner s) (\current->(Nothing,current))
+  forM_ owned closeSession
 save :: Editor -> IO Editor
 save s = do
   result<-saveProject (file s) (document s)
@@ -194,10 +204,10 @@ drawChrome window w h s = do
   afterPlay<-if play then startPlay window afterBuild else pure afterBuild
   afterStep<-if step then case live afterPlay of
     Nothing->pure afterPlay
-    Just (r,p)->protectPlay window afterPlay $ do
-      input<-N.inputs window
-      (r',p',msg,status)<-stepRuntime (1/120) input r p
-      pure (withLogs msg afterPlay {live=Just (r',p'),hud=status})
+    Just (r,_)->protectPlay window afterPlay $ do
+      input<-N.input window
+      (p',msg,status)<-singleStepSession input r
+      pure (withLogs msg afterPlay {live=Just (r,p'),hud=status})
     else pure afterPlay
   let state=afterStep {paused=if pause then not (paused afterStep) else paused afterStep}
   when pause (N.pauseAudio window (paused state))
@@ -219,7 +229,8 @@ drawChrome window w h s = do
     clicked<-N.button window (345+fromIntegral (i::Int)*83) 79 77 28 label (if current==tool then 3 else 0)
     pure (if clicked then tool else current)) (toolMode bottom) [(0,"Move W",Gizmo.Move),(1,"Rotate E",Gizmo.Rotate),(2,"Scale R",Gizmo.Scale)]
   gameToggle<-N.button window (w-464) 79 129 28 (if gameView bottom then "Game camera" else "Editor camera") 0
-  N.text window 245 (h-236) 12 (if isPlaying bottom then "WASD move | Space jump | E action | R restart" else maybe "RMB orbit | MMB pan | W/E/R tools | Shift snap | F focus" (\path->"PLACE "++takeFileName path++" / click scene / Esc cancels") (pendingPrefab bottom)) 1
+  interactive<-maybe (pure False) (sessionInteractive . fst) (live bottom)
+  N.text window 245 (h-236) 12 (if isPlaying bottom then if interactive then "" else "WASD move | Space jump | E action | R restart" else maybe "RMB orbit | MMB pan | W/E/R tools | Shift snap | F focus" (\path->"PLACE "++takeFileName path++" / click scene / Esc cancels") (pendingPrefab bottom)) 1
   when (isPlaying bottom && not (null (hud bottom))) $ do
     N.rect window 248 125 (min 600 (w-600)) 98 0
     N.text window 263 140 19 (hud bottom) 0
@@ -685,33 +696,34 @@ openText path = do
     pure ()
 
 runPlayer :: N.Window -> [SomeGame] -> FilePath -> FilePath -> Project -> Maybe Int -> Maybe FilePath -> IO ()
-runPlayer window registry _ root p limit capture = do
-  (r,started,msg)<-startRuntimeWith registry (N.audio window) root p
-  mapM_ putStrLn msg
-  loop 0 r started 0 "" `finally` stopRuntime r
+runPlayer window registry _ root p limit capture =
+  bracket (startSession "player" registry (N.audio window) root p) (\(session,_,_)->closeSession session) $ \(session,started,msg)->do
+    mapM_ putStrLn msg
+    loop session 0 started ""
   where
-    loop frame r current acc status = do
+    loop session frame _current status = do
       quit<-N.shouldClose window
-      escape<-N.key window 256 True
-      if quit||escape||maybe False (frame>=) limit then do
-        forM_ capture (N.screenshot window)
-        stopRuntime r
+      requested<-sessionQuit session
+      if quit||requested||maybe False (frame>=) limit then forM_ capture (N.screenshot window)
       else do
         dt<-min 0.1 <$> N.frameTime window
-        input<-N.inputs window
-        (r',p',remaining,hud')<-step (min 0.1 (acc+dt)) r current status input
-        (w,h)<-N.dimensions window
-        N.begin window
-        _<-N.drawScene window root p' (0,0,w,h) False False Nothing
-        when (not (null hud')) $ do N.rect window 24 24 650 103 0;N.text window 40 41 22 hud' 0
-        N.text window 26 (h-35) 14 "WASD / arrows move  |  Space jump  |  R restart  |  Esc quit" 1
-        N.end window
-        loop (frame+1) r' p' remaining hud'
-    step remaining r project status input | remaining<1/120=pure (r,project,remaining,status)
-                                   | otherwise=do
-      (r',p',messages,hud')<-stepRuntime (1/120) input r project
-      mapM_ putStrLn messages
-      step (remaining-1/120) r' p' (if null hud' then status else hud') input
+        input<-N.inputSnapshot window
+        interactive<-sessionInteractive session
+        if not interactive && keyPressed 256 input then pure () else do
+          before<-sessionGeneration session
+          (next,messages,hud')<-advanceSession dt input session
+          mapM_ putStrLn messages
+          after<-sessionGeneration session
+          when (before/=after) (N.clearFocus window >> N.unloadAssets window)
+          let label=if null hud' then status else hud'
+          (w,h)<-N.dimensions window
+          N.begin window
+          _<-N.drawScene window root next (0,0,w,h) False False Nothing
+          when (not (null label)) $ do N.rect window 24 24 (min 650 (w-48)) 103 0;N.text window 40 41 22 label 0
+          drawSessionUI window (0,0,w,h) session
+          when (not interactive) (N.text window 26 (h-35) 14 "WASD / arrows move  |  Space jump  |  R restart  |  Esc quit" 1)
+          N.end window
+          loop session (frame+1) next label
 
 applyGizmoEdit :: Maybe Gizmo.Edit -> Editor -> Editor
 applyGizmoEdit Nothing s=finishDrag s

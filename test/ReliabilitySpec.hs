@@ -82,3 +82,8 @@ projectReliability=do
   writeFile (root </> "import/unsupported.gltf") "{\"samplers\":[{\"wrapS\":33071}]}"
   samplerErrors<-checkAssets root unsupported
   assert "Unsupported texture samplers fail explicitly" (not (null samplerErrors))
+  -- A dependency referenced only by another level, outside assets/, must export.
+  saveProject (root </> "second.hj.json") imported >>= either (ioError.userError) pure
+  levelOutput<-buildProjectWithAssets ["second.hj.json"] root "assets" (emptyProject "Levels") >>= either (ioError.userError) pure
+  forM_ ["second.hj.json","studio.hdr","import/cards.gltf","import/cards.bin","import/directional-normal.png"] $ \ref->
+    doesFileExist (levelOutput </> ref) >>= assert ("Level-only export dependency missing: "++ref)

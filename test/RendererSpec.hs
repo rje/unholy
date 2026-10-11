@@ -460,15 +460,21 @@ controllerReplay :: N.Window -> IO ()
 controllerReplay window=do
   createDirectoryIfMissing True "test-output"
   let path="test-output/controller.rae"
-  writeFile path "c 7\ne 0 9 0 0 0 0\ne 0 13 0 0 16384 0\ne 0 12 0 7 0 0\ne 1 9 0 0 0 0\ne 1 13 0 0 16384 0\ne 1 12 0 7 0 0\ne 2 10 0 0 0 0\n"
+  writeFile path "c 9\ne 0 9 0 0 0 0\ne 0 13 0 0 16384 0\ne 0 13 0 2 16384 0\ne 0 12 0 7 0 0\ne 1 9 0 0 0 0\ne 1 13 0 0 16384 0\ne 1 13 0 2 16384 0\ne 1 12 0 7 0 0\ne 2 10 0 0 0 0\n"
   original<-readIORef (N.uiState window)
   N.loadReplay window path >>= assert "Controller replay did not load"
   _<-N.frameTime window
   first<-N.input window
+  firstFrame<-N.inputSnapshot window
+  let (lookX,lookY)=I.lookDelta (I.actionFrame I.defaultBindings 1 I.emptyFrame firstFrame)
+  assert "Native right stick did not reach orbital look" (lookX>0.7 && abs lookY<0.001)
   assert ("Native controller snapshot/mapping failed: "++show first) (abs (I.moveX first-(0.5-0.18)/0.82)<0.001 && I.jump first)
   focused<-readIORef (N.uiState window)
   writeIORef (N.uiState window) focused {N.focusedText=Just (42,"editing")}
   N.input window >>= assert "Native controller controls escaped text focus" . (==I.Input 0 0 False False False)
+  focusedFrame<-N.inputSnapshot window
+  let focusedActions=I.actionFrame I.defaultBindings 1 I.emptyFrame focusedFrame
+  assert "Focused text leaked into frame actions" (I.gameInput False focusedFrame==I.Input 0 0 False False False && I.lookDelta focusedActions==(0,0) && not (I.actionPressed "jump" focusedActions))
   N.clearFocus window
   _<-N.frameTime window
   second<-N.input window
@@ -476,6 +482,8 @@ controllerReplay window=do
   _<-N.frameTime window
   disconnected<-N.input window
   assert "Native disconnect retained controller movement/buttons" (disconnected==I.Input 0 0 False False False)
+  disconnectedFrame<-N.inputSnapshot window
+  assert "Native disconnect retained orbital look" (I.lookDelta (I.actionFrame I.defaultBindings 1 firstFrame disconnectedFrame)==(0,0))
   finished<-readIORef (N.uiState window)
   writeIORef (N.uiState window) original {N.replay=N.replay finished}
   pass "native replayed controller snapshot, analog mapping, held buttons, focus and disconnect"
@@ -486,7 +494,7 @@ animatedRendering window r rect=do
       (_,two)=spawnMesh "Animated right" "test/fixtures/animation/fixture.gltf" base
       (_,three)=spawnMesh "Shadow receiver" "cube" two
       pose time=defaultAnimator {animationClip="move",animationTime=time,animationLoop=False}
-      scene=(emptyProject "Independent poses") {camera=Camera (V3 0 3 8) (V3 0 0.5 0) 45,environment=defaultEnvironment {sunShadows=True},world=three {animators=IM.fromList [(1,pose 0),(2,pose 1)],transforms=IM.fromList [(1,identity {position=V3 (-1.5) 1 0}),(2,identity {position=V3 1 1 0}),(3,identity {position=V3 0 (-0.5) 0,scale=V3 10 1 8})]}}
+      scene=(emptyProject "Independent poses") {camera=Camera (V3 0 3 8) (V3 0 0.5 0) 45,environment=defaultEnvironment {sunShadows=True},world=three {animators=IM.fromList [(1,(Animation.crossfade 1 "single" (pose 0)) {animationBlend=Just (AnimationBlend "move" 0 0.4 1)}),(2,pose 1)],transforms=IM.fromList [(1,identity {position=V3 (-1.5) 1 0}),(2,identity {position=V3 1 1 0}),(3,identity {position=V3 0 (-0.5) 0,scale=V3 10 1 8})]}}
   render window scene rect False
   prior<-targetPixels r
   priorShadow<-shadowPixels
@@ -538,7 +546,7 @@ animatedRendering window r rect=do
   let ray=C.Ray (L.V3 (-2) 1.1 5) (L.V3 0 0 (-1))
       draw=R.Draw 1 left (C.modelMatrix (transforms (world scene) IM.! 1) L.identity) defaultMaterial (R.whiteTexture r) False
   assert "Animated CPU picking lost triangle" (R.pick ray [draw] Nothing==Just 1)
-  render window scene {world=(world scene) {animators=IM.adjust (\a->a {animationTime=1}) 1 (animators (world scene))}} rect False
+  render window scene {world=(world scene) {animators=IM.adjust (\a->a {animationTime=1,animationBlend=Nothing}) 1 (animators (world scene))}} rect False
   later<-targetPixels r
   laterShadow<-shadowPixels
   assert "Animated vertices did not reach the shadow pass" (VS.sum (VS.zipWith (\x y->abs (x-y)) priorShadow laterShadow)>0.01)

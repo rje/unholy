@@ -124,8 +124,8 @@ stick and held buttons. `gameInput` applies a radial 0.18 dead zone, combines
 keyboard/stick movement with per-axis clamping and maps A/Cross to jump,
 X/Square to action and Start to restart. Text focus neutralizes both keyboard
 and controller game actions. These remain held actions across fixed substeps;
-games such as Threshold track their own jump/restart edges. This is a default
-mapping, not a persisted remapping editor or generalized action system.
+games such as Threshold track their own jump/restart edges. The held-input adapter retains this default mapping. Session games can use the
+frame action bindings described below; a persisted remapping editor remains future work.
 
 ## Skeletal animation
 
@@ -171,3 +171,75 @@ entity origin under translation, rotation and scale; they cannot be dynamic or
 kinematic. JSON, clones and prefabs carry the samples inline, so exports need
 no separate heightmap asset. Texture paths use the existing Mesh/Material policy.
 See README for patch-size limits and the deliberately small inspector controls.
+
+## Session UI, actions and levels
+
+Use `gameWithInterface definition frameHook levels` for an interactive game.
+The `Game` record and its fixed hooks retain their roles. `FrameSystem state`
+receives `GameContext`, display-frame delta time, `ActionFrame`, state and project;
+it runs once before zero or more 120 Hz physics ticks. Consume jump/interact/menu
+edges there and queue the gameplay work in typed state for the next fixed tick.
+`actionFrame bindings dt previous current` supports game-defined `Binding` data,
+held/pressed/released actions, RMB/right-stick look and identified UI activations.
+Right-stick input becomes neutral on disconnect. Bindings are configurable data;
+there is no persisted remapping screen yet.
+
+Return `Present (Presentation panel prompt)` for the built-in overlay. A `Panel`
+has title/body text and `(buttonKey,label)` pairs. The session maps mouse clicks
+and keyboard/controller focus/confirmation into `activatedButtons` once per
+frame. `PauseSimulation True` freezes physics, scripts and animation while the
+frame/menu hook continues; audio pauses too. `Request ExitGame` ends the player
+or stops editor Play. The debugger's Pause/Step remains an editor control.
+
+Declare levels as unique `(key,"act-two.hj.json")` pairs. Manifests must share
+the entry project's asset root, end in `.hj.json` and use the same registered
+game. `Request (LoadLevel key)` preflights the target, closes the current runtime,
+then initializes the next. `Request (LoadLevelWith key payload)` also passes
+an optional game-owned Aeson `Value` through `GameContext.levelData`; this is
+transient handoff data, independent of filesystem saves. `enteringLevel` tells
+initialization whether a scene transition is in progress. Failed preflight
+keeps the current runtime; failed initialization provides Retry/Exit. Stop
+always restores the editor's original authored document. Build discovers every
+declared level's dependencies, including models and HDR files outside assets/.
+
+`Unholy.Session` is an abstract stable owner for custom hosts: bracket
+`startSession namespace registry audio root project` with `closeSession`, feed
+`advanceSession dt frameInput`, and read `sessionProject`, `sessionPresentation`,
+`sessionGeneration` and `sessionQuit`. Close is idempotent. The existing low-level
+Runtime stepping API remains available for fixed-tick headless applications.
+The default editor and player use Session. Replays use a fixed 60 Hz display
+clock, with two fixed simulation ticks per frame when unpaused.
+
+## Checkpoints and character movement
+
+`GameContext.saveRoot` is outside the authored/exported project. The default
+session namespaces are `preview` and `player`, then the registered game ID.
+`UNHOLY_SAVE_DIR` overrides the platform application-data base. Games own the
+Aeson schema and version policy: `readCheckpoint path` returns missing/corrupt
+results without throwing synchronous errors, and `writeCheckpoint path value`
+replaces a completed sibling temporary file atomically. A failed encode/write
+preserves the previous file. This is atomic replacement, not a power-loss/durable
+fsync guarantee. Save logical progress and named spawn marks; recreate transient
+physics/script state from authored scenes. Last Cue also retains progress in
+memory when storage is unwritable.
+
+`driveCharacter physics settings yaw jumpEdge input entity world` drives an
+upright dynamic capsule, normalizes diagonal speed, reports facing and performs
+bounded solid-ray step-up checks. `followCamera` computes an orbital camera with
+a solid-only obstruction ray; triggers do not block it. This is a small motor
+for unit capsules and simple stages, without arbitrary capsule resizing,
+full swept-volume camera collision, slope sliding or navmesh navigation.
+
+`Animation.crossfade duration clip animator` starts a two-clip local-TRS fade,
+retains independent source/destination clocks and ignores repeated selection
+of the destination clip. Pause freezes both clocks; completion drops the source.
+An interrupted fade starts from the previous destination clip, rather than
+retaining a full blended pose/graph. Skinning, posed bounds, picking and the GPU
+material/shadow passes use the same blended hierarchy. The optional
+`animationBlend` persists and defaults to Nothing in older scene JSON.
+
+Source compatibility: `Game` hooks and `Input` retain their original shapes;
+`GameContext`, `Gamepad` and `Animator` gain fields, changing positional
+constructor arities. Prefer `defaultAnimator` and `neutralGamepad` record updates
+when constructing gameplay data. This experimental version does not promise a
+stable source ABI. Existing authored project JSON remains compatible.

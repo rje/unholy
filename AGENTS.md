@@ -1,5 +1,10 @@
 # Feature demos
 
+Prefer headless contracts and gameplay checks. Automated graphics/editor replays
+must use `UNHOLY_WINDOW_HIDDEN=1` or a CI display; do not take over the user's
+desktop. Use visible windows only when the user requests them. Avoid repeating
+complete workflows after cosmetic changes; qualify each material contract once.
+
 New user-visible engine features must ship with a checked-in demo under
 `projects/`. Extend a suitable existing project or add a focused project. A test
 fixture under `test/` or a disposable scene under `build/` does not replace a demo.

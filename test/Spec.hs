@@ -7,6 +7,7 @@ import PhysicsSpec
 import LibrarySpec
 import ReliabilitySpec
 import AuthoringSpec
+import SessionSpec
 import RuntimeSpec
 import FeatureSpec
 import Unholy.Types
@@ -37,6 +38,7 @@ main = do
   test "Haskell skin hierarchy, blend weights, clips, playback and persistence" animationContracts
   test "Persistent typed authoring fields, reference remapping and unknown data" authoredReferences
   test "Game-owned resource acquisition and once-only LIFO cleanup" ownedResources
+  test "Session transitions, menu input, lazy failures, cancellation, atomic checkpoints and camera-relative movement" sessionContracts
   test "Project validation, complete exports, symlinks and failed-build preservation" projectReliability
   test "Haskell primitive CPU geometry, winding, UVs and collider dimensions" primitiveGeometry
   test "Typed game-owned components and Haskell input policy" typedInputComponents
