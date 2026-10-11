@@ -1,5 +1,19 @@
 # Haskell library verification — 2026-10-10
 
+## Current qualification
+
+The current macOS checkpoint builds the library, editor, benchmark and both
+independently packaged games. `make test` passes 20 engine integration groups
+and the Pulse Courier and Circuit Breaker gameplay tests. `make render-test`
+passes 15 groups in a real graphics/audio context. Editor replay checks cover
+failure recovery, authored component fields/links, gizmo undo/prefabs and
+imported material policy. The sections below retain the earlier checkpoints
+and their measured evidence.
+
+macOS qualification uses Apple M4, GHC 9.14.1, raylib 6.0, Bullet 3.25 and
+Cabal's bundled Lua 5.4.8. Linux headless CI is being qualified separately;
+Linux desktop graphics, editor interaction and audible output are unqualified.
+
 ## Reliability checkpoint
 
 The next increment passes 18 engine integration groups, the separate Pulse
@@ -26,9 +40,7 @@ measures validation CPU cost, not game frame rate. The change removes quadratic
 list deduplication while retaining all membership checks.
 
 Qualified on Apple silicon macOS with GHC 9.14.1, raylib 6.0, Bullet 3.25,
-and Cabal's bundled Lua 5.4.8. Linux remains configured but untested.
-
-## Library and simulation
+and Cabal's bundled Lua 5.4.8. This checkpoint did not test Linux.
 
 ## Persistent Haskell authoring checkpoint
 
@@ -73,6 +85,8 @@ renderer and current renderer: `build/verification/material-{before,after}.png`.
 This qualifies opaque static UV0 materials with repeat/linear mip sampling,
 without vertex colors, skinning, transparency, IBL or material extensions. The
 README states the importer/node and external-URI limits.
+
+## Earlier library and simulation checkpoint
 
 `cabal build all --enable-tests` builds the library, editor, independent sample
 executable and both test packages. The engine's Haskell modules and native
@@ -126,6 +140,78 @@ A fresh Marble Run editor replay also rolls, jumps, spawns a crate, resets and
 spawns again; the captured live scene has its expected 179 entities / 27 bodies
 and no script errors.
 
+## Clean public package and export
+
+`scripts/new-game.py` generated `/tmp/unholy-public-starter` with its own Cabal
+package, Haskell game source, project and assets. The default public dependency
+was pinned to GitHub revision `e0407f254880f52c2a815d6870f7235552789b47`.
+A fresh Cabal store at `/tmp/unholy-public-cabal-store` fetched that public
+source and built the game and dependencies. Its independent test completes the
+puzzle with renamed entities, real Bullet triggers/moving doors, then resets.
+No local engine source package was used for this check.
+
+The generated executable launched the actual editor and exported its project
+from the generated package's directory, outside the engine checkout. The editor
+and exported player both show **CIRCUIT COMPLETE** using
+`test/circuit-editor-smoke.rae`. Shader discovery uses installed package data;
+the export contains its sibling shaders and relocated native libraries.
+Captures and logs are retained in `build/verification/clean-public-package/`.
+
+Reproduce with a new destination and store:
+
+```sh
+python3 scripts/new-game.py /tmp/my-unholy-game --name my-puzzle
+cd /tmp/my-unholy-game
+cabal --store-dir=/tmp/my-unholy-store build all
+cabal --store-dir=/tmp/my-unholy-store test my-puzzle-tests --test-show-details=direct
+cabal --store-dir=/tmp/my-unholy-store run my-puzzle -- --build project/project.hj.json
+project/dist/my-puzzle/unholy-player --play project/dist/my-puzzle/project.hj.json
+```
+
+The generator pins the engine revision current at generation time. Native
+dependencies still need installing for development; a fresh store means fresh
+Cabal dependencies, not a machine without a compiler or native libraries.
+
+## Representative performance baseline
+
+`cabal run unholy-bench -- --gpu +RTS -T` ran on an Apple M4 with no background
+compilation. Startup/import/shader compilation are excluded. Validation is
+warmed before 400 measured iterations; a transform changes each time.
+Simulation uses 240 warm and 240 measured 1/120-second ticks, neutral input,
+and no audio device. These are idle scene workloads, not moving-player peaks.
+
+| CPU operation | Mean ms | p95 ms | Haskell bytes/operation |
+| --- | ---: | ---: | ---: |
+| Validate 1,000 entities | 0.182 | 0.302 | 384,660 |
+| Validate 4,000 entities | 0.903 | 0.962 | 1,536,733 |
+| Marble Run tick | 0.463 | 0.536 | 423,480 |
+| Pulse Courier tick | 0.026 | 0.029 | 107,558 |
+| Circuit Breaker tick | 0.016 | 0.019 | 69,782 |
+
+Graphics use the real renderer, scene camera/environment and a 2048 × 1536
+framebuffer viewport. Each scene gets 20 warm and 120 measured frames.
+
+| Scene | Submission mean / p95 ms | GPU query mean / p95 ms | Haskell bytes/frame |
+| --- | ---: | ---: | ---: |
+| Marble Run | 3.962 / 5.361 | 5.562 / 6.624 | 781,806 |
+| Pulse Courier | 1.087 / 1.588 | 2.652 / 3.347 | 221,437 |
+| Circuit Breaker | 0.607 / 0.884 | 2.166 / 2.720 | 131,613 |
+| Material Gallery | 0.441 / 0.624 | 2.352 / 3.044 | 91,749 |
+| 1,000 cubes | 9.284 / 13.116 | 2.530 / 3.352 | 2,471,941 |
+| 4,000 cubes | 38.602 / 55.189 | 21.263 / 29.364 | 9,764,783 |
+
+Submission brackets `drawScene`, including its shadow/viewport/composition
+work. GPU queries bracket the same draws and block for the result every frame;
+the elapsed interval can include waiting for CPU command submission. Allocation
+includes the whole frame and benchmark harness, and excludes native/Bullet/GPU
+memory. These numbers do not establish sustained frame rate or Linux performance.
+The raw corrected run is `build/verification/performance/m4-baseline.log`.
+
+Submission and per-frame allocation scale with every mesh because visibility
+culling, batching and instancing are absent. The first optimization candidates
+are frame transform reuse, culling and grouping material state/repeated geometry
+in Haskell. This baseline does not justify replacing the ECS or Bullet solver.
+
 ## Ownership and limits
 
 Haskell now owns primitive generation, keyboard bindings, replay sequencing,
@@ -140,8 +226,8 @@ and instruction-budget hook remain established native integrations. GLSL still
 runs GPU shading. File imports can create temporary native GPU data; built-in
 primitives now avoid that path entirely.
 
-The engine's own source is 3,244 Haskell lines, 271 native-adapter lines and
-124 GLSL lines: about 89% Haskell by physical line count. This excludes upstream
+The engine's own source is 3,738 Haskell lines, 274 native-adapter lines and
+160 GLSL lines: about 89.6% Haskell by physical line count. This excludes upstream
 libraries, the vendored widget header, tests, sample game code, generated scenes
 and tooling. It describes engine ownership, not the implementation language of
 the graphics driver, solver or decoder dependencies.
@@ -150,4 +236,4 @@ Compiled game source changes require a rebuild; no runtime Haskell plugin
 loader is included. Persistent authored components use explicit typed codecs and
 inspector descriptions; mutable session state stays separate. See the Haskell API guide
 and sample README for these contracts. This is a local development build,
-not a notarized release or cross-platform qualification.
+not a notarized release. Platform qualification is scoped at the top of this report.

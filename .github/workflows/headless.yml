@@ -24,7 +24,9 @@ jobs:
       - name: Library, editor and independent game builds
         run: cabal build all --enable-tests
       - name: Engine contracts and two independent gameplay loops
-        run: make test
+        run: |
+          make test
+          cabal run unholy-bench -- +RTS -T
       - name: New game package outside checkout
         run: |
           python3 scripts/new-game.py "$RUNNER_TEMP/new-game" --name ci-puzzle --engine-local "$GITHUB_WORKSPACE"

@@ -212,7 +212,7 @@ tables they need. Small scalar FFI adapters call established native libraries:
 - [raylib](https://github.com/raysan5/raylib): window/input, static mesh and image
   importing, audio decoding/mixing/playback, and the editor's 2D UI backend.
   Its model importer creates temporary native GPU data; Haskell copies the CPU
-  geometry and imported albedo textures, then immediately releases the native
+  geometry and supported imported material textures, then immediately releases the native
   model. All retained 3D resources and draw calls belong to the Haskell renderer.
 - [raygui](https://github.com/raysan5/raygui): editor widgets, with a charcoal and
   blue theme. A pinned header and its license live in `native/vendor/`.
@@ -294,10 +294,27 @@ The editor app launcher points at repository assets. Exported player folders
 are self-contained for this macOS architecture, but not notarized distributions.
 Linux export requires the native libraries installed on the destination machine.
 
+The next targets follow these limits and the measured baseline:
+
+1. Reduce renderer submission cost in Haskell: cache frame transforms, cull
+   invisible geometry, group material state and instance repeated meshes. The
+   4,000-cube baseline spends about 39 ms submitting draws on an M4; this needs
+   work before larger scenes are a useful promise.
+2. Add environment-map IBL to the Haskell renderer and exercise it in Material
+   Gallery, with the existing sun/shadow path retained.
+3. Reuse Bullet's capsule, convex and static triangle-mesh colliders for a sample
+   that needs them. Collider authoring and lifetime stay in Haskell.
+4. Broaden configurable input and controller support through the existing
+   window backend. Add skeletal animation and terrain when a playable sample
+   establishes their requirements.
+
+These are remaining targets, not implemented features. Measurements and clean
+public-package qualification are in [the current verification report](docs/haskell-verification.md).
+
 ## Verification tools
 
 The current qualification and evidence boundaries are in
-[docs/verification.md](docs/verification.md). Existing `project.hj.json` files
+[docs/haskell-verification.md](docs/haskell-verification.md). Existing `project.hj.json` files
 remain compatible; the project filename is retained.
 
 ```sh
@@ -339,3 +356,8 @@ go to `build/verification/unholy-runtime/`.
 and restarts; use `--frames 270` for a bounded check.
 `test/knockdown-smoke.rae` starts Play with F5 and rolls into the targets; run it
 with the Knockdown project and `--frames 210` for a bounded editor/player check.
+
+`cabal run unholy-bench -- +RTS -T` measures warm project validation and neutral
+headless simulation ticks. Add `--gpu` before `+RTS` to measure warmed renderer
+submission and serialized GPU elapsed queries in a desktop context. It also
+reports Haskell allocation; the results are component costs, not sustained FPS.
