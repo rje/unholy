@@ -1,0 +1,37 @@
+name: Headless engine and independent games
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: haskell-actions/setup@0f7370ccbc65f22514ec3e094f6601b8d61fbbf7 # v2.12.1
+        with:
+          ghc-version: '9.14.1'
+          cabal-version: '3.18.1.0'
+      - name: Native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake pkg-config libbullet-dev libgl1-mesa-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libasound2-dev
+          git clone --depth 1 --branch 6.0 https://github.com/raysan5/raylib.git "$RUNNER_TEMP/raylib"
+          cmake -S "$RUNNER_TEMP/raylib" -B "$RUNNER_TEMP/raylib-build" -DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/raylib-build" --parallel 2
+          sudo cmake --install "$RUNNER_TEMP/raylib-build"
+          sudo ldconfig
+      - name: Library, editor and independent game builds
+        run: cabal build all --enable-tests
+      - name: Engine contracts and two independent gameplay loops
+        run: make test
+      - name: New game package outside checkout
+        run: |
+          python3 scripts/new-game.py "$RUNNER_TEMP/new-game" --name ci-puzzle --engine-local "$GITHUB_WORKSPACE"
+          cd "$RUNNER_TEMP/new-game"
+          cabal build all
+          cabal test ci-puzzle-tests --test-show-details=direct
+          cabal run ci-puzzle -- --check project/project.hj.json
+          cabal run ci-puzzle -- --build project/project.hj.json
+          cd "$RUNNER_TEMP"
+          ./new-game/project/dist/ci-puzzle/unholy-player --check ./new-game/project/dist/ci-puzzle/project.hj.json
