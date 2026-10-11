@@ -32,7 +32,9 @@ build configuration, but Linux has not been qualified.
 ## Editor
 
 - **New / Load / Save**: create projects, select a sample or browse to a project
-  file, and save the scene. Unsaved work gets a `.recovery` file on window close.
+  file, and save the scene. Unsaved work gets a `.recovery` file on window close
+  or exceptional exit. Haskell gameplay failures stop Play, report the error,
+  and retain the editable scene so you can fix the game and play again.
 - **Hierarchy**: select entities; **+ Add** creates primitives, empty entities or
   point lights. The inspector supports rename, duplicate and delete.
 - **Inspector**: edit position, Euler rotation, scale, mesh and albedo texture
@@ -59,6 +61,11 @@ build configuration, but Linux has not been qualified.
   `<project>/dist/<name>/`. On macOS, double-click **Play.command**. Non-system
   dynamic libraries are bundled and their install paths relocated. Builds
   target the current OS and CPU architecture; this is not cross-compilation.
+  Export copies the complete `assets/` tree plus direct scene references and
+  the selected Haskell game's declared files, retaining relative paths.
+  Asset symlinks and reserved export destinations are rejected. Keep multifile
+  models and their dependencies beneath `assets/`; explicitly declare files
+  elsewhere. A failed staging check leaves the previous export intact.
 
 Viewport: **RMB drag** orbits, **MMB drag** pans, **wheel** zooms, **F** focuses
 the selected entity. **W/E/R** select move/rotate/scale tools; drag the colored

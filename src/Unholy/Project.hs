@@ -4,8 +4,8 @@ import Unholy.Types
 import Unholy.Transform (resolveWorld)
 import Unholy.JSON
 import qualified Data.IntMap.Strict as IM
-import Control.Monad (forM_, unless, when, foldM)
-import Control.Exception (IOException, try)
+import Control.Monad (forM, forM_, unless, when, foldM)
+import Control.Exception (IOException, try, onException)
 import System.Directory
 import System.FilePath
 import System.Environment (getExecutablePath)
@@ -57,16 +57,13 @@ decodeProject input = do
     <*> optionalField "skyBottom" (vfield "skyBottom" en) (skyBottom defaultEnvironment) en
     <*> optionalField "fogDensity" (floatField "fogDensity" en) 0 en
     <*> optionalField "sunShadows" (field "sunShadows" en >>= boolean) False en
-  unless (fov cam>1 && fov cam<179 && eye cam/=target cam) (Left "Invalid camera")
-  unless (all finite [sunPower env,ambient env,exposure env,fogDensity env] && sunPower env>=0 && ambient env>=0 && exposure env>0 && fogDensity env>=0 && sunDirection env/=V3 0 0 0 && validV (skyTop env) && validV (skyBottom env)) (Left "Invalid environment")
-  mapM_ assetPath (assetReferences w)
   settings<-optionalField "physics" (do
     ph<-field "physics" j
     PhysicsSettings <$> vfield "gravity" ph <*> floatField "supportNormal" ph <*> floatField "supportDistance" ph) defaultPhysicsSettings j
-  unless (validV (gravity settings) && finite (supportNormal settings) && supportNormal settings>=0 && supportNormal settings<=1 && finite (supportDistance settings) && supportDistance settings>=0) (Left "Invalid physics settings")
   gameKey<-optionalField "haskellGame" (field "haskellGame" j >>= \v->case v of Null->Right Nothing;_->Just <$> string v) Nothing j
-  when (gameKey==Just "") (Left "Empty Haskell game identifier")
-  pure (Project n (resolveWorld w) cam env settings gameKey)
+  let p=Project n (resolveWorld w) cam env settings gameKey
+  validateProject p
+  pure p
   where
     floatField k j = field k j >>= number >>= finiteFloat
     boolean (Boolean b) = Right b
@@ -105,9 +102,20 @@ decodeProject input = do
       let put v table = maybe table (\x -> IM.insert e x table) v
       pure w {names=IM.insert e n (names w),transforms=IM.insert e tr (transforms w),meshes=put m (meshes w),materials=put mat (materials w),scripts=put script (scripts w),lights=put light (lights w),bodies=put body (bodies w),parents=put parent (parents w)}
 
+validateProject :: Project -> Either String ()
+validateProject p = do
+  validateWorld (world p)
+  let c=camera p; env=environment p; ph=physicsSettings p
+  unless (validV (eye c) && validV (target c) && finite (fov c) && fov c>1 && fov c<179 && eye c/=target c) (Left "Invalid camera")
+  unless (all validV [sunDirection env,sunColor env,skyTop env,skyBottom env] && all finite [sunPower env,ambient env,exposure env,fogDensity env] && sunPower env>=0 && ambient env>=0 && exposure env>0 && fogDensity env>=0 && sunDirection env/=V3 0 0 0) (Left "Invalid environment")
+  unless (validV (gravity ph) && finite (supportNormal ph) && supportNormal ph>=0 && supportNormal ph<=1 && finite (supportDistance ph) && supportDistance ph>=0) (Left "Invalid physics settings")
+  when (haskellGame p==Just "") (Left "Empty Haskell game identifier")
+  mapM_ assetPath (assetReferences (world p))
+
 assetPath :: FilePath -> Either String ()
 assetPath p
-  | null p || isAbsolute p || ".." `elem` splitDirectories p = Left ("Asset paths must stay relative to the project: "++p)
+  | null p || normalise p=="." || isAbsolute p || ".." `elem` splitDirectories p = Left ("Asset paths must stay relative to the project: "++p)
+  | map toLower (takeWhile (/=pathSeparator) (normalise p)) `elem` ["dist","engine","lib","unholy-player",projectFile,"play.command"] = Left ("Asset path conflicts with exported player: "++p)
   | otherwise = Right ()
 
 builtins :: [String]
@@ -125,16 +133,24 @@ loadProject path = ioEither $ do
 
 saveProject :: FilePath -> Project -> IO (Either String ())
 saveProject path p = ioEither $ do
-  either (ioError . userError) pure (validateWorld (world p))
-  mapM_ (either (ioError . userError) pure . assetPath) (assetReferences (world p))
+  either (ioError . userError) pure (validateProject p)
   createDirectoryIfMissing True (takeDirectory path)
   let temp=path++".tmp"
   writeFile temp (encodeJSON (projectJSON p)++"\n")
   renameFile temp path
 
 checkAssets :: FilePath -> Project -> IO [String]
-checkAssets root p = fmap concat $ mapM check (assetReferences (world p))
-  where check ref = do exists<-doesFileExist (root </> ref); pure ["Missing asset: "++ref | not exists]
+checkAssets root p = checkAssetFiles root (assetReferences (world p))
+
+checkAssetFiles :: FilePath -> [FilePath] -> IO [String]
+checkAssetFiles root refs = do
+  base<-canonicalizePath root
+  fmap concat $ forM refs $ \ref -> case assetPath ref of
+    Left err->pure [err]
+    Right ()->do
+      linked<-or <$> mapM (\path->do exists<-doesPathExist path; if exists then pathIsSymbolicLink path else pure False) (scanl (</>) base (splitDirectories (normalise ref)))
+      exists<-doesFileExist (base </> ref)
+      pure (["Symbolic links are unsupported in project assets: "++ref | linked]++["Missing asset: "++ref | not exists])
 
 ioEither :: IO a -> IO (Either String a)
 ioEither act = do
@@ -159,21 +175,30 @@ listAssets root = do
 
 copyTree :: FilePath -> FilePath -> IO ()
 copyTree from to = do
+  linkRoot<-pathIsSymbolicLink from
+  when linkRoot (ioError (userError ("Symbolic links are unsupported in exported assets: "++from)))
   createDirectoryIfMissing True to
   files<-listDirectory from
   forM_ files $ \f -> do
     let a=from </> f; b=to </> f
     link<-pathIsSymbolicLink a
-    unless link $ do dir<-doesDirectoryExist a; if dir then copyTree a b else copyFile a b
+    when link (ioError (userError ("Symbolic links are unsupported in exported assets: "++a)))
+    dir<-doesDirectoryExist a
+    if dir then copyTree a b else copyFile a b
 
 -- Build a desktop folder with the current compiled runtime, project and assets.
 -- On macOS relocate non-system dylibs so Homebrew is not required by the player.
 buildProject :: FilePath -> FilePath -> Project -> IO (Either String FilePath)
-buildProject root engineAssets p = ioEither $ do
-  either (ioError . userError) pure (validateWorld (world p))
-  missing<-checkAssets root p
+buildProject = buildProjectWithAssets []
+
+-- Include the selected game's declared assets as well as scene references.
+-- The complete assets tree is retained for Lua/prefab/importer dependencies.
+buildProjectWithAssets :: [FilePath] -> FilePath -> FilePath -> Project -> IO (Either String FilePath)
+buildProjectWithAssets extra root engineAssets p = ioEither $ do
+  either (ioError . userError) pure (validateProject p)
+  let refs=nub (assetReferences (world p)++extra)
+  missing<-checkAssetFiles root refs
   unless (null missing) (ioError (userError (unlines missing)))
-  mapM_ (either (ioError . userError) pure . assetPath) (assetReferences (world p))
   let output=root </> "dist" </> slug (projectName p)
       staging=output++".tmp"
   exists<-doesDirectoryExist staging
@@ -185,14 +210,28 @@ buildProject root engineAssets p = ioEither $ do
   setPermissions (staging </> "unholy-player") permissions
   assetDirExists<-doesDirectoryExist (root </> "assets")
   when assetDirExists (copyTree (root </> "assets") (staging </> "assets"))
+  forM_ refs $ \ref -> do
+    createDirectoryIfMissing True (takeDirectory (staging </> ref))
+    copyFile (root </> ref) (staging </> ref)
   copyTree (engineAssets </> "shaders") (staging </> "engine" </> "shaders")
+  forM_ ["pbr.vs","pbr.fs","depth.vs","depth.fs","screen.vs","screen.fs","line.vs","line.fs"] $ \shader -> do
+    shaderExists<-doesFileExist (staging </> "engine" </> "shaders" </> shader)
+    unless shaderExists (ioError (userError ("Missing engine shader: "++shader)))
   writeFile (staging </> projectFile) (encodeJSON (projectJSON p)++"\n")
   writeFile (staging </> "Play.command") "#!/bin/sh\ncd -- \"$(dirname -- \"$0\")\"\nexec ./unholy-player --play project.hj.json --engine-assets engine\n"
   setPermissions (staging </> "Play.command") (permissions {executable=True})
   when (os=="darwin") (bundleMacLibraries staging)
+  staged<-loadProject (staging </> projectFile)
+  either (ioError.userError) (either (ioError.userError) pure . validateProject) staged
+  stagedMissing<-checkAssetFiles staging refs
+  unless (null stagedMissing) (ioError (userError (unlines stagedMissing)))
   old<-doesDirectoryExist output
-  when old (removePathForcibly output)
-  renameDirectory staging output
+  let backup=output++".previous"
+  backupExists<-doesPathExist backup
+  when backupExists (ioError (userError ("Previous export backup still exists: "++backup)))
+  when old (renameDirectory output backup)
+  renameDirectory staging output `onException` when old (renameDirectory backup output)
+  when old (removePathForcibly backup)
   pure output
 
 bundleMacLibraries :: FilePath -> IO ()

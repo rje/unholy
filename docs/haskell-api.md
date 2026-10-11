@@ -30,6 +30,16 @@ without this field continue to use Lua. Each application explicitly registers
 its compiled games; an unknown or duplicate identifier reports an error.
 Use `saveProject`, `loadProject`, and `buildProject` for persistence and export.
 The player is the current executable, with its compiled registrations.
+`validateProject` checks the whole document, including camera, environment,
+physics and paths; the same contract applies to Haskell hook results. For a
+custom exporter, use `buildProjectWithAssets requiredFiles root shaderRoot p`
+to include game-owned files outside `assets/`. The editor/CLI passes the selected
+game's `requiredAssets` automatically. The legacy `buildProject` wrapper includes
+scene references and the complete `assets/` tree, with no extra declarations.
+
+Headless `--check` and `--simulate` with an explicit project path need no shader
+directory. Graphical applications locate exported sibling shaders, development
+assets or installed Cabal data; `--engine-assets` explicitly selects a directory.
 
 `System state` is an ordinary Haskell function receiving explicit `GameContext`,
 `Step`, `Input`, typed state, and `Project`. `GameContext` owns the project asset

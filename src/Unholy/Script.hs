@@ -3,6 +3,7 @@
 module Unholy.Script (Runtime, startRuntime, startRuntimeWith, stopRuntime, stepRuntime) where
 
 import Unholy.Types
+import Unholy.Project (validateProject)
 import Unholy.Physics
 import qualified Unholy.Game as Game
 import Unholy.Input (Input(..))
@@ -36,7 +37,7 @@ startRuntime :: FilePath -> Project -> IO (Runtime,Project,[String])
 startRuntime = startRuntimeWith [] Nothing
 startRuntimeWith :: [Game.SomeGame] -> Maybe Audio.Engine -> FilePath -> Project -> IO (Runtime,Project,[String])
 startRuntimeWith registry sound root p = do
-  either (ioError.userError) pure (validateWorld (world p))
+  either (ioError.userError) pure (validateProject p)
   definition<-either (ioError.userError) pure (Game.findGame registry p)
   missing<-Game.checkGameAssets registry root p
   when (not (null missing)) (ioError (userError (unlines missing)))

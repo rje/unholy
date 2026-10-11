@@ -1,7 +1,6 @@
 module Unholy.Types where
 
 import qualified Data.IntMap.Strict as IM
-import Data.List (nub)
 
 type Entity = Int
 data V3 = V3 !Float !Float !Float deriving (Eq, Show, Read)
@@ -100,7 +99,9 @@ validateWorld w
   | otherwise = Right ()
   where
     ids = IM.keys (names w)
-    componentIds = nub (concat [IM.keys (transforms w),IM.keys (meshes w),IM.keys (materials w),IM.keys (scripts w),IM.keys (lights w),IM.keys (bodies w),IM.keys (parents w)])
+    -- Duplicates do not affect membership checks. Avoid quadratic list nub on
+    -- this path, which runs at every Haskell system boundary.
+    componentIds = concat [IM.keys (transforms w),IM.keys (meshes w),IM.keys (materials w),IM.keys (scripts w),IM.keys (lights w),IM.keys (bodies w),IM.keys (parents w)]
     badParent (e,p) = parentEntity p==e || IM.notMember (parentEntity p) (names w) || badTransform (localTransform p) || cycleAt [e] (parentEntity p) || maybe False ((>0) . mass) (IM.lookup e (bodies w))
     cycleAt seen e | e `elem` seen = True
                    | otherwise = maybe False (cycleAt (e:seen) . parentEntity) (IM.lookup e (parents w))

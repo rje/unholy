@@ -1,6 +1,7 @@
 module Unholy.Application (runApplication) where
 
-import Unholy.Game (SomeGame,findGame,checkGameAssets)
+import Unholy.Game (SomeGame,findGame,checkGameAssets,gameAssetReferences)
+import qualified Paths_unholy as Paths
 import Unholy.Types
 import Unholy.Project
 import Unholy.Script
@@ -23,10 +24,10 @@ runApplication registry = runInBoundThread $ do
   when ("--help" `elem` args) $ do
     putStrLn "Unholy 0.1 / Haskell 3D engine\n\n  unholy [PROJECT]                     Open editor (default: material-lab)\n  unholy --play PROJECT                Run standalone player\n  unholy --check PROJECT               Validate scene and assets\n  unholy --build PROJECT               Export runnable desktop folder\n  unholy --simulate STEPS PROJECT      Run headless Haskell/Lua + Bullet steps\n\n  --engine-assets DIR              Engine asset directory\n  --replay FILE                    Play raylib automation events\n  --frames N --capture FILE.png    Bounded visual smoke run"
     exitSuccess
-  engine<-case option "--engine-assets" args of Just p->makeAbsolute p;Nothing->findEngineAssets
   let positional=removeOptions args
-      defaultProject=takeDirectory engine </> "projects" </> "material-lab" </> projectFile
-  path<-makeAbsolute (case positional of p:_->p;_->defaultProject)
+  path<-case positional of
+    p:_->makeAbsolute p
+    _->do engine<-engineAssets args;makeAbsolute (takeDirectory engine </> "projects" </> "material-lab" </> projectFile)
   loaded<-loadProject path
   p<-either failWith pure loaded
   _<-either failWith pure (findGame registry p)
@@ -37,7 +38,9 @@ runApplication registry = runInBoundThread $ do
     if null missing then putStrLn ("Valid project: "++projectName p++" / "++show (length (renderables (world p)))++" renderables") else failWith (unlines missing)
   else if "--build" `elem` args then do
     when (not (null missing)) (failWith (unlines missing))
-    built<-buildProject (takeDirectory path) engine p
+    engine<-engineAssets args
+    refs<-either failWith pure (gameAssetReferences registry p)
+    built<-buildProjectWithAssets refs (takeDirectory path) engine p
     either failWith (putStrLn . ("Built: "++)) built
   else case option "--simulate" args >>= readMaybe of
     Just steps->do
@@ -49,9 +52,10 @@ runApplication registry = runInBoundThread $ do
         mapM_ putStrLn messages
         when (not (null status)) (pure ())
         pure (nextR,nextP)) (runtime,started) [1..steps::Int] `finally` stopRuntime runtime
-      either failWith pure (validateWorld (world final))
+      either failWith pure (validateProject final)
       putStrLn ("Simulated "++show steps++" steps: "++projectName p)
     Nothing->do
+      engine<-engineAssets args
       N.withWindow ("Unholy / "++projectName p) engine $ \window -> do
         case option "--replay" args of
           Nothing->pure ()
@@ -76,9 +80,13 @@ findEngineAssets :: IO FilePath
 findEngineAssets = do
   exe<-getExecutablePath
   cwd<-getCurrentDirectory
+  installed<-Paths.getDataFileName "assets"
   let ancestors=take 8 (iterate takeDirectory (takeDirectory exe))
-      roots=[cwd </> "assets",takeDirectory exe </> "engine"]++map (</> "assets") ancestors
+      roots=[takeDirectory exe </> "engine",cwd </> "assets"]++map (</> "assets") ancestors++[installed]
   findValid roots
   where
     findValid []=failWith "Cannot find engine shaders. Launch from the repository or supply --engine-assets DIR."
     findValid (p:ps)=do exists<-doesFileExist (p </> "shaders" </> "pbr.fs");if exists then makeAbsolute p else findValid ps
+
+engineAssets :: [String] -> IO FilePath
+engineAssets args=maybe findEngineAssets makeAbsolute (option "--engine-assets" args)

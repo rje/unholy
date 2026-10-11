@@ -1,5 +1,30 @@
 # Haskell library verification — 2026-10-10
 
+## Reliability checkpoint
+
+The next increment passes 18 engine integration groups, the separate Pulse
+Courier gameplay test, and the 14 real GPU/audio groups. New regressions cover
+complete project validation, top-level scene and declared game assets in
+exports, reserved destinations (including case aliases), symlink ancestors,
+and retention of the previous export after staging failure.
+
+`python3 scripts/verify-reliability.py` compiles a disposable application against
+the public library. Five real-editor runs deliberately fail initialize,
+before-physics, after-physics, a lazy HUD character, and paused Step. Every run
+returns to editing, starts Play again, and recovers an unsaved duplicated
+assembly. Captures and run logs are under `build/verification/reliability/`.
+The existing real-editor gizmo/undo/prefab/save check also passes.
+
+A copied executable validates and simulates an absolute project from an
+unrelated working directory without shader discovery. An exported project with
+a top-level Lua file launches its real player from that unrelated directory
+using sibling shader resources.
+
+A CPU-only flat-world validation probe changed from 7.378 ms at 1,000 entities
+and 77.650 ms at 4,000 to 0.265 ms and 0.953 ms in the retained runs. This
+measures validation CPU cost, not game frame rate. The change removes quadratic
+list deduplication while retaining all membership checks.
+
 Qualified on Apple silicon macOS with GHC 9.14.1, raylib 6.0, Bullet 3.25,
 and Cabal's bundled Lua 5.4.8. Linux remains configured but untested.
 

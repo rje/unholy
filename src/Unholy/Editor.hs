@@ -8,7 +8,8 @@ import qualified Unholy.Renderer.Camera as C
 import qualified Linear as L
 import Unholy.Project
 import qualified Unholy.Native as N
-import Unholy.Game (SomeGame,findGame,checkGameAssets)
+import Unholy.Game (SomeGame,findGame,checkGameAssets,gameAssetReferences)
+import Unholy.Exception (trySync)
 import Unholy.Script
 import qualified Data.IntMap.Strict as IM
 import Control.Monad (foldM, forM_, when)
@@ -20,7 +21,8 @@ import Data.IORef
 import Data.List (sort, isSuffixOf)
 import Data.Maybe (isJust)
 import Data.Time.Clock.POSIX (getPOSIXTime)
-import Control.Exception (finally, try, IOException)
+import Control.Exception (finally, evaluate, onException)
+import Control.DeepSeq (force)
 
 data Tab = EntityTab | WorldTab deriving Eq
 data Modal = ProjectPicker FilePath [FilePath] | NewProject String | Unsaved FilePath | AddEntity | SavePrefab Entity FilePath deriving Eq
@@ -54,23 +56,26 @@ runEditor window registry engineAssets path p frameLimit capture = do
   a<-listAssets (takeDirectory path)
   let initial=Editor p path Nothing (fst <$> IM.lookupMin (names (world p))) False False False
         ["Ready. Select an entity; F5 plays the project.","Unholy / Haskell renderer + Bullet + Lua"] "" 0 EntityTab True 0 0 0 Nothing [] [] (sort a) Gizmo.Move Nothing Nothing registry engineAssets
-  active<-newIORef Nothing
-  loop active 0 initial `finally` (readIORef active >>= mapM_ stopRuntime)
+  active<-newIORef initial
+  loop active 0 initial `finally` (do
+    latest<-readIORef active
+    -- A recovery or cleanup failure must not replace the original exception.
+    cleanup<-trySync (forM_ (live latest) (stopRuntime . fst))
+    either (putStrLn . show) pure cleanup
+    when (dirty latest) $ do
+      recovery<-trySync (saveProject (file latest++".recovery") (document latest))
+      print recovery)
   where
     loop active frame s = do
-      writeIORef active (fst <$> live s)
+      writeIORef active s
       quit<-N.shouldClose window
       if quit || maybe False (frame>=) frameLimit then do
         forM_ capture (N.screenshot window)
-        forM_ (live s) (stopRuntime . fst)
-        when (dirty s) $ do
-          -- Recover unsaved work after a window close without overwriting the project.
-          result<-saveProject (file s++".recovery") (document s)
-          print result
       else do
         dt<-min 0.1 <$> N.frameTime window
         input<-N.inputs window
-        stepped<-if modal s/=Nothing then pure s else advance dt input s
+        stepped<-if modal s/=Nothing then pure s else protectPlay window s (advance dt input s)
+        writeIORef active stepped
         (w,h)<-N.dimensions window
         N.begin window
         N.uiEnabled window (modal s==Nothing)
@@ -79,15 +84,32 @@ runEditor window registry engineAssets path p frameLimit capture = do
           (not (isPlaying stepped && gameView stepped)) (grid stepped) (selected stepped)
         edit<-N.takeGizmoEdit window
         let sceneState=applyGizmoEdit edit stepped {selected=picked}
+        writeIORef active sceneState
         placed<-placePrefab window (230,115,w-552,h-362) sceneState
+        writeIORef active placed
         chrome<-drawChrome window w h placed
+        writeIORef active chrome
         N.uiEnabled window True
         next<-case modal chrome of Nothing->shortcuts window chrome;Just _->drawModal window w h chrome
+        writeIORef active next
         N.end window
-        writeIORef active (fst <$> live next)
+        writeIORef active next
         err<-N.nativeError window
         N.clearError window
         loop active (frame+1) (if null err then next else addLog err next)
+
+protectPlay :: N.Window -> Editor -> IO Editor -> IO Editor
+protectPlay window original action = do
+  result<-trySync $ do
+    next<-action
+    -- HUD/log strings from trusted Haskell code may themselves contain bottoms.
+    _<-evaluate (force (hud next,logs next))
+    pure next
+  case result of
+    Right next->pure next
+    Left err->do
+      stopped<-stopPlay window original
+      pure (addLog ("Runtime failure: "++show err++"\nEditable scene preserved. Fix the game and start Play again.") stopped)
 
 advance :: Float -> [Float] -> Editor -> IO Editor
 advance dt input s = case live s of
@@ -114,16 +136,19 @@ startPlay window s | isPlaying s = stopPlay window s
   let missing=sceneAssets++gameAssets
   let errors=missing++either (:[]) (const []) (findGame (gameRegistry s) (document s))
   if not (null errors) then pure (withLogs errors s) else do
-    result<-try (startRuntimeWith (gameRegistry s) (N.audio window) (takeDirectory (file s)) (document s))
+    result<-trySync $ do
+      started@(runtime,_,messages)<-startRuntimeWith (gameRegistry s) (N.audio window) (takeDirectory (file s)) (document s)
+      _<-evaluate (force messages) `onException` stopRuntime runtime
+      pure started
     case result of
-      Left err->pure (addLog (show (err::IOException)) s)
+      Left err->pure (addLog (show err) s)
       Right (runtime,p,messages)->pure (withLogs messages (addLog "Play started. Stop restores the editable scene." s {live=Just (runtime,p),paused=False,gameView=True,hud="",accumulator=0,dragUndo=Nothing,pendingPrefab=Nothing}))
 stopPlay :: N.Window -> Editor -> IO Editor
 stopPlay window s = do
-  forM_ (live s) (stopRuntime . fst)
+  closed<-trySync (forM_ (live s) (stopRuntime . fst))
   N.clearFocus window
   N.unloadAssets window
-  pure (addLog "Play stopped." s {live=Nothing,paused=False,gameView=False,hud="",accumulator=0})
+  pure (either (addLog . show) (const id) closed (addLog "Play stopped." s {live=Nothing,paused=False,gameView=False,hud="",accumulator=0}))
 save :: Editor -> IO Editor
 save s = do
   result<-saveProject (file s) (document s)
@@ -131,7 +156,11 @@ save s = do
 build :: FilePath -> Editor -> IO Editor
 build engine s = do
   missing<-checkGameAssets (gameRegistry s) (takeDirectory (file s)) (document s)
-  result<-if null missing then buildProject (takeDirectory (file s)) engine (document s) else pure (Left (unlines missing))
+  let refs=gameAssetReferences (gameRegistry s) (document s)
+  result<-if null missing then case refs of
+    Left err->pure (Left err)
+    Right paths->buildProjectWithAssets paths (takeDirectory (file s)) engine (document s)
+    else pure (Left (unlines missing))
   pure $ either (`addLog` s) (\out->addLog ("Built: "++out++"/Play.command") s) result
 
 drawChrome :: N.Window -> Float -> Float -> Editor -> IO Editor
@@ -156,7 +185,7 @@ drawChrome window w h s = do
   afterPlay<-if play then startPlay window afterBuild else pure afterBuild
   afterStep<-if step then case live afterPlay of
     Nothing->pure afterPlay
-    Just (r,p)->do
+    Just (r,p)->protectPlay window afterPlay $ do
       input<-N.inputs window
       (r',p',msg,status)<-stepRuntime (1/120) input r p
       pure (withLogs msg afterPlay {live=Just (r',p'),hud=status})

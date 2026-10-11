@@ -3,15 +3,17 @@
 -- hides that type; there is no Dynamic component store or scripting ABI.
 module Unholy.Game
   ( Game(..), SomeGame, game, gameIdentifier, GameContext(..), Step(..), System
-  , Effect(..), checkGameAssets, RunningGame, startGame, tickGame, applyEffects, findGame ) where
+  , Effect(..), checkGameAssets, gameAssetReferences, RunningGame, startGame, tickGame, applyEffects, findGame ) where
 
 import Unholy.Types
 import Unholy.Input
 import Unholy.Physics
 import qualified Unholy.Audio as Audio
-import Unholy.Project (assetPath)
-import Control.Monad (foldM, filterM)
-import System.Directory (doesFileExist)
+import Unholy.Project (assetPath,validateProject,checkAssetFiles)
+import Unholy.Exception (trySync)
+import Control.Monad (foldM)
+import Control.Exception (evaluate)
+import Control.DeepSeq (force)
 import System.FilePath ((</>))
 
 data GameContext = GameContext { assetRoot :: FilePath, gamePhysics :: Physics, gameAudio :: Maybe Audio.Engine }
@@ -39,23 +41,27 @@ findGame registry p=case haskellGame p of
 data Effect = Log String | HUD String | Sound FilePath Float Float Bool | Teleport Entity
   deriving (Eq,Show)
 startGame :: GameContext -> SomeGame -> Project -> IO (RunningGame,Project,[Effect])
-startGame ctx (SomeGame definition) p=do
+startGame ctx (SomeGame definition) p=hook definition "initialize" $ do
   (state,next,effects)<-initialize definition ctx p
   validate next
   pure (RunningGame definition state,next,effects)
 tickGame :: Bool -> [CollisionEvent] -> GameContext -> Step -> Input -> RunningGame -> Project -> IO (RunningGame,Project,[Effect])
-tickGame after events ctx dt input (RunningGame definition state) p=do
+tickGame after events ctx dt input (RunningGame definition state) p=hook definition (if after then "afterPhysics" else "beforePhysics") $ do
   (nextState,next,effects)<-(if after then afterPhysics definition events else beforePhysics definition) ctx dt input state p
   validate next
   pure (RunningGame definition nextState,next,effects)
 validate :: Project -> IO ()
-validate p=either (ioError.userError) pure (validateWorld (world p))
+validate p=either (ioError.userError) pure (validateProject p)
+hook :: Game state -> String -> IO a -> IO a
+hook definition label operation=do
+  result<-trySync operation
+  either (ioError.userError . (("Game "++identifier definition++" / "++label++": ")++) . show) pure result
 applyEffects :: GameContext -> [Effect] -> IO ([String],String)
 applyEffects ctx=foldM apply ([],"")
   where
     apply (logs,hud) effect=case effect of
-      Log message->pure (logs++[message],hud)
-      HUD message->pure (logs,message)
+      Log message->evaluate (force message) >> pure (logs++[message],hud)
+      HUD message->evaluate (force message) >> pure (logs,message)
       Teleport e->requestTeleport (gamePhysics ctx) e >> pure (logs,hud)
       Sound path volume pitch looping->do
         either (ioError.userError) pure (assetPath path)
@@ -63,11 +69,9 @@ applyEffects ctx=foldM apply ([],"")
         pure (logs,hud)
 
 checkGameAssets :: [SomeGame] -> FilePath -> Project -> IO [String]
-checkGameAssets registry root p=case findGame registry p of
+gameAssetReferences :: [SomeGame] -> Project -> Either String [FilePath]
+gameAssetReferences registry p=fmap (maybe [] (\(SomeGame definition)->requiredAssets definition)) (findGame registry p)
+
+checkGameAssets registry root p=case gameAssetReferences registry p of
   Left err->pure [err]
-  Right Nothing->pure []
-  Right (Just (SomeGame definition))->do
-    let paths=requiredAssets definition
-        invalid=[err | path<-paths,Left err<-[assetPath path]]
-    missing<-filterM (fmap not . doesFileExist . (root </>)) [path | path<-paths,assetPath path==Right ()]
-    pure (invalid++map ("Missing Haskell game asset: "++) missing)
+  Right paths->checkAssetFiles root paths
