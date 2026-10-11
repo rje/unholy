@@ -32,7 +32,7 @@ makePrefab e input = do
   let members=IM.fromList [(id',()) | id'<-descendants e w]
       keep table=IM.intersection table members
       rootPose=transforms w IM.! e
-      subset=w {names=keep (names w),transforms=IM.insert e (rootPose {position=V3 0 0 0}) (keep (transforms w)),meshes=keep (meshes w),materials=keep (materials w),scripts=keep (scripts w),lights=keep (lights w),bodies=keep (bodies w),parents=IM.delete e (keep (parents w)),authored=keep (authored w)}
+      subset=w {names=keep (names w),transforms=IM.insert e (rootPose {position=V3 0 0 0}) (keep (transforms w)),meshes=keep (meshes w),materials=keep (materials w),scripts=keep (scripts w),lights=keep (lights w),bodies=keep (bodies w),parents=IM.delete e (keep (parents w)),authored=keep (authored w),animators=keep (animators w)}
   unless (all (\ref->IM.member ref members) [ref | values<-IM.elems (authored subset),fs<-M.elems values,EntityValue (Just ref)<-M.elems fs]) (Left "Prefab has an authored reference outside its assembly; include the target in the prefab")
   validateWorld subset
   pure (Prefab e (resolveWorld subset))
@@ -57,6 +57,6 @@ instantiate prefab placement current = do
       authoredCopies=IM.map (mapReferences (\e->IM.lookup e remap)) (authored source)
       next=resolveWorld current {nextId=nextId current+length ids,names=copy (names source) (names current),transforms=copy poses (transforms current)
         ,meshes=copy (meshes source) (meshes current),materials=copy (materials source) (materials current),scripts=copy (scripts source) (scripts current)
-        ,lights=copy (lights source) (lights current),bodies=copy (bodies source) (bodies current),parents=copy parentCopies (parents current),authored=copy authoredCopies (authored current)}
+        ,lights=copy (lights source) (lights current),bodies=copy (bodies source) (bodies current),parents=copy parentCopies (parents current),authored=copy authoredCopies (authored current),animators=copy (animators source) (animators current)}
   validateWorld next
   pure (root,map idOf ids,next)

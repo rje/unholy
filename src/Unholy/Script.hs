@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Unholy.Script (Runtime, startRuntime, startRuntimeWith, stopRuntime, stepRuntime) where
 
+import qualified Unholy.Animation as Animation
 import Unholy.Types
 import Unholy.Physics
 import qualified Unholy.Game as Game
@@ -132,7 +133,7 @@ stepRuntime dt input r p = do
   (updated,scripted,updateLogs,updateHud)<-foldM update (prepared,ready,[],"") (IM.toAscList (virtualMachines prepared))
   (spawned,beforePhysics,spawnLogs,spawnHud)<-reconcile updated scripted
   configurePhysics (physics r) (physicsSettings beforePhysics)
-  nextWorld<-stepPhysics (physics r) dt (world beforePhysics)
+  nextWorld<-stepPhysics (physics r) dt (Animation.advanceAnimators dt (world beforePhysics))
   events<-collisionEvents (physics r)
   (nativeFinal,nativeAfter,afterLogs,afterHud)<-runGame True events spawned beforePhysics {world=nextWorld}
   (contacted,afterEvents,eventLogs,eventHud)<-foldM dispatch (nativeFinal,nativeAfter,[],"")

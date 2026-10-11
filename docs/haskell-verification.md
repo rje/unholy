@@ -3,9 +3,9 @@
 ## Current qualification
 
 The current macOS checkpoint builds the library, editor, benchmark and three
-independently packaged games. `make test` passes 21 engine integration groups
+independently packaged games. `make test` passes 22 engine integration groups
 and the Pulse Courier, Circuit Breaker and Threshold gameplay tests. `make render-test`
-passes 19 groups in a real graphics/audio context. Editor replay checks cover
+passes 20 groups in a real graphics/audio context. Editor replay checks cover
 failure recovery, authored component fields/links, gizmo undo/prefabs and
 imported material policy. The sections below retain the earlier checkpoints
 and their measured evidence.
@@ -14,6 +14,36 @@ macOS qualification uses Apple M4, GHC 9.14.1, raylib 6.0, Bullet 3.25 and
 Cabal's bundled Lua 5.4.8. Ubuntu 24.04 headless CI also passes the library/editor
 build, engine/game tests and generated-package export check. Linux desktop
 graphics, editor interaction and audible output are unqualified.
+
+## Skeletal animation checkpoint — 2026-10-11
+
+The first-class persisted Animator owns clip selection, pose time, rate, looping
+and pause. Haskell advances time once per runtime tick, evaluates every node
+(including non-joint parents), interpolates LINEAR/STEP tracks with shortest-path
+quaternions, applies inverse binds and performs four-weight CPU skinning. cgltf
+decodes accessors; raylib still supplies material-image decoding. The skinned mesh
+node transform is ignored; the outer entity transform applies once. Per-entity
+buffers borrow textures from an immutable source. Both render passes, bounds and
+picking consume the same updated geometry. The format is bounded in README;
+blending, root motion, morphs, GPU skinning and crowd performance remain outside
+this checkpoint.
+
+All 22 engine groups, three packaged game suites and 20 GPU/audio groups pass.
+A transform fixture combines a nonidentity mesh node, non-joint parent and two
+nonzero weights. It covers bind pose, known movement, looping/clamping, exact STEP
+boundary, single-key tracks, antipodal quaternion interpolation and pause. Clone,
+delete, prefabs, JSON and strict preflight retain the component. Missing-base
+geometry and unsupported interpolation fail before unsafe native import. The GPU
+fixture renders two independent poses, checks changed pixels/bounds/picking and
+shadow depth, recovers from an invalid clip and verifies per-instance disposal.
+
+Threshold's original rig responds with idle/walk/jump clips while its Bullet
+capsule remains the collider. The real editor and relocated exported player still
+complete the route; Reset/Stop retain authored scene bytes. Actual inspector
+buttons persist pause/clamp while retaining authored time 0.5 after save/reopen.
+Walk/jump and authoring captures were inspected in `build/verification/animation/`;
+route/export captures are in `build/verification/threshold/`. A larger slope/minimum
+shadow bias reduces the smooth-surface banding visible in the earlier capsule scene.
 
 ## Collider and controller checkpoint — 2026-10-11
 
@@ -336,8 +366,8 @@ and instruction-budget hook remain established native integrations. GLSL still
 runs GPU shading. File imports can create temporary native GPU data; built-in
 primitives now avoid that path entirely.
 
-The engine's own source is 4,090 Haskell lines, 360 native-adapter lines and
-292 GLSL lines: about 86.3% Haskell by physical line count. This excludes upstream
+The engine's own source is 4,423 Haskell lines, 383 native-adapter lines and
+292 GLSL lines: about 86.8% Haskell by physical line count. This excludes upstream
 libraries, the vendored widget header, tests, sample game code, generated scenes
 and tooling. It describes engine ownership, not the implementation language of
 the graphics driver, solver or decoder dependencies.

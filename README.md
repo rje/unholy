@@ -313,8 +313,21 @@ with finite nonnegative radiance up to 60,000. This is a bounded global lighting
 path; local probes, HDR EXR files and offline-quality baking are unsupported.
 Material Gallery includes an original generated studio environment.
 
-This version has **no skeletal animation or terrain**.
-Imported meshes are static. Physics reuses Bullet box/sphere/capsule, convex
+Skeletal animation uses a first-class `Animator` store: clip, time, rate, loop and
+pause. Haskell evaluates the complete node hierarchy, inverse-bind palettes and
+four-weight CPU skinning; drawing, shadows, bounds and picking use one prepared
+pose. Threshold's original traveler has idle/walk/jump clips. The inspector edits
+saved poses/configuration, and Play/Stop keep runtime time separate. Core glTF/GLB
+skins require triangle geometry with POSITION/NORMAL/UV0/JOINTS0/WEIGHTS0, at most
+65,535 vertices per primitive and 512 nodes, nonsparse base geometry views, float
+position/normal/UV/weights and unsigned byte/short joints. LINEAR and STEP tracks
+support translation, rotation and positive scale. Mixed rigid/skinned primitives,
+extra attributes (including tangents), morphs, cubic tracks, animation blending,
+root motion and GPU skinning are unsupported. CPU skinning targets modest rigs;
+this checkpoint makes no crowd-performance claim. Static imports retain their
+existing material policy. Finite terrain is the remaining implementation slice.
+
+ Physics reuses Bullet box/sphere/capsule, convex
 hull and static triangle-mesh shapes. A capsule has radius 0.5 and total height 2
 before uniform entity scaling; its editor primitive/outline matches. Convex and
 triangle colliders derive from the entity's mesh (built-ins or unskinned core
@@ -345,11 +358,11 @@ The next targets follow these limits and the measured baseline:
 3. Collider/input support now has a playable checkpoint in Threshold: Bullet
    capsule/convex/static triangle shapes and native controller snapshots, with
    Haskell authoring, input policy and transactional resource lifetime.
-4. Add skeletal animation and terrain when a playable sample establishes their
-   requirements.
+4. Skeletal animation now has a playable Threshold checkpoint. Add finite terrain
+   against the same route, with rendering/collision agreement and editor export.
 
-Items 1–3 now have working checkpoints; animation and terrain
-remain the next implementation slice. Measurements and clean
+Items 1–3 and animation now have working checkpoints; terrain
+remains the next implementation slice. Measurements and clean
 public-package qualification are in [the current verification report](docs/haskell-verification.md).
 
 ## Verification tools

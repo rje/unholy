@@ -37,15 +37,17 @@ foreign import ccall unsafe "hj_asset_material_index" cMaterialIndex :: Ptr () -
 foreign import ccall unsafe "hj_asset_mesh_image" cMeshImage :: Ptr () -> CInt -> CInt -> Ptr CInt -> IO (Ptr ())
 
 loadModel :: FilePath -> IO ModelData
-loadModel path | Just cpu<-P.primitive path = do
+loadModel=loadModelWith False
+loadModelWith :: Bool -> FilePath -> IO ModelData
+loadModelWith _ path | Just cpu<-P.primitive path = do
   let raw=P.vertices cpu
       positions=VS.generate (VS.length raw `div` 8) (\i -> V3 (raw VS.! (i*8)) (raw VS.! (i*8+1)) (raw VS.! (i*8+2)))
       bounds=boundsOf positions
   gpu<-uploadBuffer raw (P.indices cpu)
   pure (ModelData [MeshData gpu positions (P.indices cpu) bounds Nothing] identity bounds Nothing)
-loadModel path = withCString path $ \name -> bracket (cModel name) cFreeModel $ \p -> do
+loadModelWith animated path = withCString path $ \name -> bracket (cModel name) cFreeModel $ \p -> do
   when (p==nullPtr) (ioError (userError ("Cannot import mesh: "++path)))
-  attempted<-try (F.loadMaterials path)
+  attempted<-try ((if animated then F.loadAnimatedMaterials else F.loadMaterials) path)
   let metadata=either (const Nothing) id attempted
       diagnostic=either (Just . show . (id :: IOException -> IOException)) (const Nothing) attempted
   transform<-allocaArray 16 $ \out -> do

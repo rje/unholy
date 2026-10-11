@@ -10,7 +10,10 @@ void *hj_asset_model(const char *path) {
     Model *m=calloc(1,sizeof(Model));
     if(!m) return NULL;
     if(FileExists(path)) *m=LoadModel(path);
-    if(!IsModelValid(*m)) { if(m->meshCount) UnloadModel(*m);free(m);return NULL; }
+    // We consume decoded CPU data, not raylib's animation GPU buffers.
+    // IsModelValid requires bone VBOs even in its CPU-skinning builds.
+    if(m->meshCount<=0 || m->materialCount<=0 || !m->meshes || !m->materials || !m->meshMaterial) { if(m->meshCount) UnloadModel(*m);free(m);return NULL; }
+    for(int i=0;i<m->meshCount;i++) if(!m->meshes[i].vertices || m->meshes[i].vertexCount<=0 || m->meshMaterial[i]<0 || m->meshMaterial[i]>=m->materialCount) {UnloadModel(*m);free(m);return NULL;}
     return m;
 }
 void hj_asset_model_free(void *p) { if(p) {UnloadModel(*(Model *)p);free(p);} }

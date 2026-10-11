@@ -97,7 +97,7 @@ float sunlight(vec3 n) {
     vec4 light=lightVP*vec4(worldPosition,1.0);
     vec3 q=light.xyz/light.w*0.5+0.5;
     if(any(lessThan(q,vec3(0))) || any(greaterThan(q,vec3(1)))) return 1.0;
-    float bias=max(0.00005*(1.0-dot(n,normalize(-sunDirection))),0.00002);
+    float bias=max(0.00035*(1.0-dot(n,normalize(-sunDirection))),0.00010);
     float visibility=0.0;
     for(int x=-1;x<=1;x++) for(int y=-1;y<=1;y++)
         visibility+=q.z-bias<=texture(shadowMap,q.xy+vec2(x,y)/2048.0).r?1.0:0.0;

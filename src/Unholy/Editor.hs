@@ -247,7 +247,7 @@ drawHierarchy window h s = do
 drawInspector :: N.Window -> Float -> Float -> Editor -> IO Editor
 drawInspector window w h s = do
   wheel<-N.wheel window (w-322) 118 322 (h-146)
-  let maxScroll=if tab s==WorldTab then 820 else 1350
+  let maxScroll=if tab s==WorldTab then 820 else 1660
       scroll=max 0 (min maxScroll (inspectorScroll s-wheel*40))
       x=w-305; y=132-scroll
   N.clip window (w-322) 120 322 (h-149)
@@ -378,7 +378,7 @@ entityInspector window x y s = case selected s of
         metal<-N.slider window x (y+543) 287 "Metallic" (metallic m) 0 1
         rough<-N.slider window x (y+591) 287 "Roughness" (roughness m) 0.04 1
         emit<-N.slider window x (y+639) 287 "Emission" (emission m) 0 8
-        pure $ if remove then w0 {meshes=IM.delete e (meshes w0),materials=IM.delete e (materials w0)} else w0
+        pure $ if remove then w0 {meshes=IM.delete e (meshes w0),animators=IM.delete e (animators w0),materials=IM.delete e (materials w0)} else w0
           {meshes=IM.insert e (Mesh geometry' tex (if policy then not (useImportedMaterials mesh) else useImportedMaterials mesh)) (meshes w0),materials=IM.insert e (Material (fromListV (map (max 0 . min 1) (vlist color))) metal rough emit) (materials w0)}
     N.text window x (y+704) 13 "LUA SCRIPT" 2
     let script=IM.findWithDefault "" e (scripts w1)
@@ -421,18 +421,33 @@ entityInspector window x y s = case selected s of
         power<-N.slider window x (y+1298) 287 "Intensity" (intensity l) 0 200
         remove<-N.button window x (y+1346) 287 28 "Remove light" 2
         pure w3 {lights=if remove then IM.delete e (lights w3) else IM.insert e (Light color power) (lights w3)}
+    N.text window x (y+1510) 13 "SKELETAL ANIMATOR" 2
+    w5<-case IM.lookup e (animators w4) of
+      Nothing->do
+        add<-N.button window x (y+1535) 287 30 "Add Animator / glTF skin" 0
+        pure (if add && IM.member e (meshes w4) then w4 {animators=IM.insert e defaultAnimator (animators w4)} else w4)
+      Just a->do
+        clip<-N.textbox window 26 x (y+1535) 287 30 (animationClip a)
+        phase<-N.textbox window 27 x (y+1575) 139 30 (show (animationTime a))
+        rate<-N.textbox window 28 (x+147) (y+1575) 140 30 (show (animationRate a))
+        N.text window x (y+1610) 12 "Pose seconds / playback rate 0..10" 1
+        loop<-N.button window x (y+1635) 139 30 (if animationLoop a then "Loop" else "Clamp") 0
+        play<-N.button window (x+147) (y+1635) 140 30 (if animationPlaying a then "Playing" else "Paused") 0
+        remove<-N.button window x (y+1675) 287 30 "Remove Animator" 2
+        let next=a {animationClip=clip,animationTime=max 0 (maybe (animationTime a) id (readFloat phase)),animationRate=max 0 (min 10 (maybe (animationRate a) id (readFloat rate))),animationLoop=if loop then not (animationLoop a) else animationLoop a,animationPlaying=if play then not (animationPlaying a) else animationPlaying a}
+        pure w4 {animators=if remove then IM.delete e (animators w4) else IM.insert e next (animators w4)}
     N.text window x (y+1410) 13 "PARENT / ENTITY ID" 2
     parentText<-N.textbox window 25 x (y+1435) 116 30 (maybe "" (show . parentEntity) (IM.lookup e (parents w4)))
     attach<-N.button window (x+124) (y+1435) 79 30 "Set" 0
     detachParent<-N.button window (x+211) (y+1435) 76 30 "Clear" 0
     let parentChange=case reads parentText of
-          [(id',"")] | IM.member id' (names w4) -> Right w4 {parents=IM.insert e (Parent id' (relative (transforms w4 IM.! id') (transforms w4 IM.! e))) (parents w4)}
+          [(id',"")] | IM.member id' (names w4) -> Right w5 {parents=IM.insert e (Parent id' (relative (transforms w4 IM.! id') (transforms w4 IM.! e))) (parents w4)}
           _ -> Left "Enter a live parent entity ID"
-        candidate=if detachParent then Right w4 {parents=IM.delete e (parents w4)} else if attach then parentChange else Right w4
+        candidate=if detachParent then Right w5 {parents=IM.delete e (parents w4)} else if attach then parentChange else Right w5
         checked=candidate >>= \value->validateWorld value >> Right value
         edited=either (\err->addLog err s) (\value->change ((document s) {world=value}) s) checked
     if del then pure (editWorld (destroy e) edited) else if dupe then do
-      let (n,duplicated)=duplicate e w4
+      let (n,duplicated)=duplicate e w5
       pure (change ((document s) {world=duplicated}) s {selected=Just n})
       else pure edited {modal=if prefab then Just (SavePrefab e ("assets/prefabs/"++slug name++".prefab.json")) else modal edited}
   where w=world (document s)

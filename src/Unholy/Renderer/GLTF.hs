@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 -- Metadata only: Aeson preserves float factors that raylib's geometry importer
 -- drops or quantizes. Geometry and image decoding remain upstream integrations.
-module Unholy.Renderer.GLTF (MaterialInfo(..),defaultInfo,loadMaterials,assetDependencies) where
+module Unholy.Renderer.GLTF (MaterialInfo(..),defaultInfo,loadMaterials,loadAnimatedMaterials,readDocument,assetDependencies) where
 
 import qualified Data.Aeson as A
 import Data.Aeson ((.:?),(.!=))
@@ -23,7 +23,11 @@ defaultInfo :: MaterialInfo
 defaultInfo=MaterialInfo (V3 1 1 1) 1 1 1 (V3 0 0 0) 1
 
 loadMaterials :: FilePath -> IO (Maybe (IM.IntMap MaterialInfo))
-loadMaterials path=readDocument path >>= traverse (parse document)
+loadMaterials=loadWith False
+loadAnimatedMaterials :: FilePath -> IO (Maybe (IM.IntMap MaterialInfo))
+loadAnimatedMaterials=loadWith True
+loadWith :: Bool -> FilePath -> IO (Maybe (IM.IntMap MaterialInfo))
+loadWith animated path=readDocument path >>= traverse (parse (document animated))
   where parse parser value=either (failure path) pure (A.parseEither parser value)
 
 assetDependencies :: FilePath -> IO [FilePath]
@@ -58,12 +62,12 @@ jsonChunk bytes=do
   pure (B.take count (B.drop 20 bytes))
   where word offset=sum [fromIntegral (B.index bytes (offset+i))*256^i | i<-[0..3::Int]]
 
-document :: A.Value -> A.Parser (IM.IntMap MaterialInfo)
-document=A.withObject "glTF" $ \o->do
+document :: Bool -> A.Value -> A.Parser (IM.IntMap MaterialInfo)
+document animated=A.withObject "glTF" $ \o->do
   required<-o .:? "extensionsRequired" .!= ([]::[String])
   unless (null required) (fail "Required extensions are not supported")
   skins<-o .:? "skins" .!= ([]::[A.Value])
-  unless (null skins) (fail "Skinned materials are not supported")
+  unless (animated || null skins) (fail "Skinned assets require an Animator component")
   samplers<-o .:? "samplers" .!= ([]::[A.Value])
   forM_ samplers $ A.withObject "sampler" $ \s->do
     wrapS<-s .:? "wrapS" .!= (10497::Int);wrapT<-s .:? "wrapT" .!= (10497::Int)

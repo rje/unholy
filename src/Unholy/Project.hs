@@ -6,6 +6,7 @@ import Unholy.JSON
 import qualified Unholy.Renderer.GLTF as GLTF
 import qualified Unholy.Renderer.IBL as IBL
 import Unholy.Asset.CPU (loadTriangles)
+import qualified Unholy.Animation as Animation
 import qualified Data.IntMap.Strict as IM
 import qualified Data.Map.Strict as M
 import Control.Monad (forM, forM_, unless, when, foldM)
@@ -34,6 +35,7 @@ projectJSON p = Object
     int=Number . fromIntegral; num=Number . realToFrac; vec=Array . map num . vlist
     entity (e,n) = Object $ [("id",int e),("name",String n),("transform",trans (transforms w IM.! e))]
       ++ optional "mesh" (\m -> Object [("geometry",String (geometry m)),("texture",String (texture m)),("importMaterials",Boolean (useImportedMaterials m))]) (IM.lookup e (meshes w))
+      ++ optional "animator" (\a -> Object [("clip",String (animationClip a)),("time",num (animationTime a)),("rate",num (animationRate a)),("loop",Boolean (animationLoop a)),("playing",Boolean (animationPlaying a))]) (IM.lookup e (animators w))
       ++ optional "material" mat (IM.lookup e (materials w))
       ++ optional "script" String (IM.lookup e (scripts w))
       ++ optional "authored" (Object . map (\(key,fields)->(key,Object [(k,fieldJSON value) | (k,value)<-M.toAscList fields])) . M.toAscList) (IM.lookup e (authored w))
@@ -97,6 +99,7 @@ decodeProject input = do
       fields <- object j
       let optional k decode = traverse decode (lookup k fields)
       m <- optional "mesh" (\o -> Mesh <$> (field "geometry" o >>= string) <*> (field "texture" o >>= string) <*> maybe (Right False) boolean (lookup "importMaterials" =<< either (const Nothing) Just (object o)))
+      animator <- optional "animator" (\o -> Animator <$> (field "clip" o >>= string) <*> floatField "time" o <*> floatField "rate" o <*> (field "loop" o >>= boolean) <*> (field "playing" o >>= boolean))
       mat <- optional "material" (\o -> Material <$> vfield "albedo" o <*> floatField "metallic" o <*> floatField "roughness" o <*> floatField "emission" o)
       script <- optional "script" string
       gameData <- optional "authored" (\o->object o >>= mapM (\(key,value)->do
@@ -123,7 +126,7 @@ decodeProject input = do
           <*> optionalField "angularDamping" (floatField "angularDamping" o) 0.08 o
           <*> optionalField "lockRotation" (field "lockRotation" o >>= boolean) False o)
       let put v table = maybe table (\x -> IM.insert e x table) v
-      pure w {names=IM.insert e n (names w),transforms=IM.insert e tr (transforms w),meshes=put m (meshes w),materials=put mat (materials w),scripts=put script (scripts w),lights=put light (lights w),bodies=put body (bodies w),parents=put parent (parents w),authored=put gameData (authored w)}
+      pure w {names=IM.insert e n (names w),transforms=IM.insert e tr (transforms w),meshes=put m (meshes w),materials=put mat (materials w),scripts=put script (scripts w),lights=put light (lights w),bodies=put body (bodies w),parents=put parent (parents w),authored=put gameData (authored w),animators=put animator (animators w)}
 
 validateProject :: Project -> Either String ()
 validateProject p = do
@@ -179,15 +182,19 @@ checkAssets root p = do
         let path=geometry (meshes (world p) IM.! e)
         decoded<-try (loadTriangles (if path `elem` builtins then path else root </> path))
         pure (case decoded of Right _->[];Left err->["Collider "++show e++" / "++path++": "++show (err::IOException)])
+    animations<-fmap concat $ forM (IM.toList (animators (world p))) $ \(e,a)->do
+      let path=geometry (meshes (world p) IM.! e)
+      decoded<-try (Animation.loadRig (root </> path) >>= \rig->either (ioError.userError) pure (Animation.validateAnimator rig a))
+      pure (case decoded of Right _->[];Left err->["Animator "++show e++" / "++path++": "++show (err::IOException)])
     discovered<-try (expandedAssetReferences root (world p))
     case discovered of
-      Left err->pure (hdr++colliders++[show (err::IOException)])
-      Right refs->((hdr++colliders)++) <$> checkAssetFiles root (refs++projectAssetReferences p)
+      Left err->pure (hdr++colliders++animations++[show (err::IOException)])
+      Right refs->((hdr++colliders++animations)++) <$> checkAssetFiles root (refs++projectAssetReferences p)
 
 expandedAssetReferences :: FilePath -> World -> IO [FilePath]
 expandedAssetReferences root w=fmap (nub . concat) $ forM (assetReferences w) $ \ref->do
-  when (any (\mesh->geometry mesh==ref && useImportedMaterials mesh) (IM.elems (meshes w))) $ do
-    _<-GLTF.loadMaterials (root </> ref)
+  forM_ [(e,m) | (e,m)<-IM.toList (meshes w),geometry m==ref,useImportedMaterials m] $ \(e,_)->do
+    _<-(if IM.member e (animators w) then GLTF.loadAnimatedMaterials else GLTF.loadMaterials) (root </> ref)
     pure ()
   dependencies<-GLTF.assetDependencies (root </> ref)
   pure (ref:map (takeDirectory ref </>) dependencies)

@@ -56,7 +56,9 @@ move _ step controls state p
           velocityFor b=let V3 _ vy _=velocity b;moving=if won state then 0 else speed/magnitude
                        in b {velocity=V3 (moveX controls*moving) (if jumping then leap else vy) (moveZ controls*moving)}
           shuttle current (e,pose,(travel,period))=let V3 x y z=position pose in setTransform e pose {position=V3 (x+travel*sin (time*2*pi/period)) y z} current
-          animated=foldl shuttle w {bodies=IM.adjust velocityFor (traveler state) (bodies w)} (shuttles state)
+          clip=if won state then "idle" else if jumping || not (maybe False grounded (IM.lookup (traveler state) (bodies w))) then "jump" else if abs (moveX controls)+abs (moveZ controls)>0.01 then "walk" else "idle"
+          animate a=a {animationClip=clip,animationTime=if animationClip a==clip then animationTime a else 0,animationRate=if clip=="walk" then 1.7 else 1}
+          animated=foldl shuttle w {animators=IM.adjust animate (traveler state) (animators w),bodies=IM.adjust velocityFor (traveler state) (bodies w)} (shuttles state)
           V3 x y z=position (transforms animated IM.! traveler state)
           next=state {clock=time,jumpHeld=jump controls,restartHeld=restart controls}
       pure (next,p {world=animated,camera=(camera p) {eye=V3 (x+7) (y+7) (z+10),target=V3 x y (z-3)}},[Sound "assets/audio/jump.wav" 0.25 0.8 False | jumping])
@@ -78,13 +80,13 @@ sampleProject=(emptyProject "Threshold") {haskellGame=Just "threshold",world=sce
   where
     mesh name shape pos size color body w=let (e,next)=spawnMesh name shape w in (e,next {transforms=IM.insert e (Transform pos (V3 0 0 0) size) (transforms next),materials=IM.insert e (Material color 0.35 0.38 0) (materials next),bodies=maybe (bodies next) (\b->IM.insert e b (bodies next)) body})
     (_,base)=mesh "Basalt foundation" "cube" (V3 0 (-0.3) 0) (V3 12 0.6 28) (V3 0.13 0.19 0.2) (Just defaultBody) emptyWorld
-    (player,a)=mesh "Traveler" "capsule" (V3 0 1.05 11) (V3 1 1 1) (V3 0.95 0.55 0.16) (Just defaultBody {bodyShape=Capsule,mass=1,lockRotation=True,friction=0.25}) base
+    (player,a)=mesh "Traveler" "assets/traveler.gltf" (V3 0 1.05 11) (V3 1 1 1) (V3 0.95 0.55 0.16) (Just defaultBody {bodyShape=Capsule,mass=1,lockRotation=True,friction=0.25}) base
     (_,b)=mesh "Sloping causeway / triangle mesh" "assets/ramp.gltf" (V3 0 0 0) (V3 1 1 1) (V3 0.2 0.29 0.3) (Just defaultBody {bodyShape=TriangleMesh}) a
     (_,c)=mesh "Upper terrace" "cube" (V3 0 1 (-7)) (V3 6 2 14) (V3 0.19 0.28 0.29) (Just defaultBody) b
     (_,d)=mesh "Jump threshold" "cube" (V3 0 2.45 (-5)) (V3 5.9 0.9 0.5) (V3 0.55 0.31 0.1) (Just defaultBody) c
     (_,e)=mesh "Pushable convex block" "cube" (V3 0 0.4 7) (V3 0.8 0.8 0.8) (V3 0.4 0.25 0.13) (Just defaultBody {bodyShape=Convex,mass=0.7,friction=0.3}) d
     (lift,f)=mesh "Side shuttle" "cube" (V3 5 2 (-5)) (V3 3 0.4 4) (V3 0.14 0.38 0.44) (Just defaultBody {kinematic=True}) e
-    marked=setComponent playerComponent player (5,7) (setComponent platformComponent lift (1.6,4) f)
+    marked=setComponent playerComponent player (5,7) (setComponent platformComponent lift (1.6,4) f {animators=IM.singleton player defaultAnimator {animationClip="idle"}})
     withBeacons=foldl (\w (index,pos)->let (id,next)=mesh ("Beacon "++show index) "torus" pos (V3 1.3 1.3 1.3) (V3 0.95 0.6 0.12) (Just defaultBody {trigger=True}) w in setComponent (marker "beacon") id () next) marked [(1::Int,V3 0 1 9),(2,V3 0 2 3),(3,V3 0 3 (-9))]
     (_,arch)=mesh "Arrival arch" "torus" (V3 0 4 (-12)) (V3 7 7 7) (V3 0.15 0.7 0.8) Nothing withBeacons
     (goal,end)=spawn "Threshold trigger" arch

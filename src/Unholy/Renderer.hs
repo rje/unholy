@@ -11,6 +11,7 @@ import Unholy.Renderer.Camera
 import Unholy.Renderer.Assets
 import qualified Unholy.Renderer.GLTF as F
 import qualified Unholy.Renderer.IBL as IBL
+import qualified Unholy.Animation as Animation
 import Graphics.GL
 import qualified Linear as L
 import qualified Data.Map.Strict as M
@@ -35,6 +36,8 @@ data Renderer = Renderer
   , instanceBuffer :: !GLuint, poseCache :: !(IORef (IM.IntMap CachedPose))
   , instancingEnabled :: !(IORef Bool), cullingEnabled :: !(IORef Bool), frameStats :: !(IORef FrameStats)
   , environmentCache :: !(IORef (Maybe (FilePath,Maybe IBL.IBL)))
+  , animationSources :: !(IORef (M.Map FilePath (Maybe (Animation.Rig,ModelData))))
+  , animatedInstances :: !(IORef (IM.IntMap (FilePath,Animator,ModelData)))
   , disposed :: !(IORef Bool)
   }
 data Draw = Draw { drawEntity :: !Entity, drawModel :: !ModelData, drawMatrix :: !(L.M44 Float), drawMaterial :: !Material, drawTexture :: !GLuint, drawImported :: !Bool }
@@ -75,6 +78,8 @@ initialize root = preservingState $ \_ ->
     frameStats<-newIORef (FrameStats 0 0 0 0)
     let neutralMaps=replicate 6 whiteTexture
     environmentCache<-newIORef Nothing
+    animationSources<-newIORef M.empty
+    animatedInstances<-newIORef IM.empty
     disposed<-newIORef False
     checkGL "Haskell renderer initialization"
     putStrLn "Renderer: Haskell / OpenGL 3.3 (direct GPU submission)"
@@ -113,6 +118,10 @@ unloadAssets Renderer{..} = do
   flushUI
   models<-atomicModifyIORef' meshCache (\m -> (M.empty,m))
   textures<-atomicModifyIORef' textureCache (\m -> (M.empty,m))
+  instances<-atomicModifyIORef' animatedInstances (\m->(IM.empty,m))
+  sources<-atomicModifyIORef' animationSources (\m->(M.empty,m))
+  mapM_ (\(_,_,m)->deleteAnimated m) (IM.elems instances)
+  mapM_ (mapM_ (deleteModel . snd)) (M.elems sources)
   priorEnvironment<-atomicModifyIORef' environmentCache (\value->(Nothing,value))
   mapM_ (mapM_ IBL.deleteIBL . snd) priorEnvironment
   writeIORef poseCache IM.empty
@@ -154,6 +163,60 @@ getModelFor r importedPolicy path = do
       when importedPolicy (forM_ (materialError model) (reportError r . userError))
       modifyIORef' (meshCache r) (M.insert path model)
       pure model
+-- Instance buffers borrow source material textures. Only the immutable source
+-- owns those textures; removing a character deletes its mutable buffers alone.
+deleteAnimated :: ModelData -> IO ()
+deleteAnimated=mapM_ (deleteBuffer . meshBuffer) . modelMeshes
+getAnimatedModel :: Renderer -> Entity -> FilePath -> Animator -> IO ModelData
+getAnimatedModel r e path a=do
+  sources<-readIORef (animationSources r)
+  source<-case M.lookup path sources of
+    Just cached->pure cached
+    Nothing->do
+      attempt<-try $ do
+        rig<-Animation.loadRig path
+        model<-loadModelWith True path
+        (do unless (length (Animation.rigMeshes rig)==length (modelMeshes model)) (ioError (userError "Skin/import material primitive counts disagree"))
+            forM_ (materialError model) (ioError . userError)
+            pure (rig,model)) `onException` deleteModel model
+      let cached=either (const Nothing) Just attempt
+      either (reportError r) (const (pure ())) attempt
+      modifyIORef' (animationSources r) (M.insert path cached)
+      pure cached
+  case source of
+    Nothing->do
+      old<-atomicModifyIORef' (animatedInstances r) (\instances->(IM.delete e instances,IM.lookup e instances))
+      mapM_ (\(_,_,model)->deleteAnimated model) old
+      getModelFor r False "cube"
+    Just (rig,original)->do
+      old<-IM.lookup e <$> readIORef (animatedInstances r)
+      case old of
+        Just (prior,config,model) | prior==path && config==a->pure model
+        _->do
+          safe<-case Animation.validateAnimator rig a of
+            Right ()->pure a
+            Left err->reportError r (userError err) >> pure a {animationClip=""}
+          let vertices=Animation.posedMeshes rig safe
+              reusable=case old of Just (prior,_,model) | prior==path->Just model;_->Nothing
+              create []=pure []
+              create ((raw,bind,material):rest)=do
+                buffer<-uploadBuffer raw (Animation.triangleIndices bind)
+                let mesh=makeMesh buffer raw (Animation.triangleIndices bind) (importedMaterial material)
+                following<-create rest `onException` deleteBuffer buffer
+                pure (mesh:following)
+          meshes'<-case reusable of
+            Nothing->create (zip3 vertices (Animation.rigMeshes rig) (modelMeshes original))
+            Just model->forM (zip vertices (modelMeshes model)) $ \(raw,mesh)->do
+              glBindBuffer GL_ARRAY_BUFFER (vertexBuffer (meshBuffer mesh))
+              VS.unsafeWith raw $ \p->glBufferSubData GL_ARRAY_BUFFER 0 (fromIntegral (VS.length raw*4)) (castPtr p)
+              pure (makeMesh (meshBuffer mesh) raw (meshIndices mesh) (importedMaterial mesh))
+          let model=ModelData meshes' L.identity (boundsOf (VS.fromList (concatMap (\m->let (lo,hi)=meshBounds m in [lo,hi]) meshes'))) Nothing
+          when (maybe True (const False) reusable) (mapM_ (\(_,_,m)->deleteAnimated m) old)
+          modifyIORef' (animatedInstances r) (IM.insert e (path,a,model))
+          pure model
+  where
+    makeMesh buffer raw indices material=let positions=VS.generate (VS.length raw `div` 8) (\i->L.V3 (raw VS.! (i*8)) (raw VS.! (i*8+1)) (raw VS.! (i*8+2)))
+      in MeshData buffer positions indices (boundsOf positions) material
 getEnvironment :: Renderer -> FilePath -> IO (Maybe IBL.IBL)
 getEnvironment r path = do
   cached<-readIORef (environmentCache r)
@@ -226,12 +289,14 @@ drawScene r mouse down snapping root project rect@(x,y,w,h) (screenW,screenH) ed
     writeIORef (gizmoDrag r) nextDrag
     writeIORef (gizmoEdit r) edited
     priorPoses<-readIORef (poseCache r)
+    unused<-atomicModifyIORef' (animatedInstances r) (\instances->let (live,dead)=IM.partitionWithKey (\e _->IM.member e (animators displayed) && IM.member e (meshes displayed)) instances in (live,dead))
+    mapM_ (\(_,_,m)->deleteAnimated m) (IM.elems unused)
     prepared<-forM (renderables displayed) $ \(e,t,m,mat) -> do
       let path=if geometry m `elem` builtins then geometry m else root </> geometry m
-      model<-getModelFor r (useImportedMaterials m) path
+      model<-case IM.lookup e (animators displayed) of Nothing->getModelFor r (useImportedMaterials m) path;Just a->getAnimatedModel r e path a
       tex<-getTexture r (if null (texture m) then "" else root </> texture m)
       let pose=case IM.lookup e priorPoses of
-            Just cached | cachedGeometry cached==path && cachedModel cached==vertexArray (meshBuffer (head (modelMeshes model))) && cachedTransform cached==t -> cached
+            Just cached | IM.notMember e (animators displayed) && cachedGeometry cached==path && cachedModel cached==vertexArray (meshBuffer (head (modelMeshes model))) && cachedTransform cached==t -> cached
             _->let matrix=modelMatrix t (importTransform model);normal=L.transpose (L.inv44 matrix)
                in CachedPose path (vertexArray (meshBuffer (head (modelMeshes model)))) t matrix normal (transformBounds matrix (modelBounds model)) [L.transpose matrix,L.transpose normal]
       pure (Draw e model (cachedMatrix pose) mat tex (useImportedMaterials m),pose)

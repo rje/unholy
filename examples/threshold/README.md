@@ -31,3 +31,8 @@ physical device, which has not been tested here.
 engine samples' original studio environment and sounds. `cabal run
 exe:threshold -- --write-scene projects/threshold` regenerates scene data.
 The example also builds as a separate application using the public library.
+
+The original traveler rig has idle, walk and jump clips. Haskell selects the clip
+from input/grounding and owns interpolation/skinning. Its upright Bullet capsule
+remains the gameplay collider. `python3 scripts/traveler-art.py` regenerates the
+original glTF art and the blended hierarchy fixture.

@@ -1,5 +1,6 @@
 module Main where
 
+import AnimationSpec
 import PhysicsSpec
 import LibrarySpec
 import ReliabilitySpec
@@ -30,6 +31,7 @@ load name = loadProject ("projects" </> name </> projectFile) >>= either (ioErro
 
 main :: IO ()
 main = do
+  test "Haskell skin hierarchy, blend weights, clips, playback and persistence" animationContracts
   test "Persistent typed authoring fields, reference remapping and unknown data" authoredReferences
   test "Game-owned resource acquisition and once-only LIFO cleanup" ownedResources
   test "Project validation, complete exports, symlinks and failed-build preservation" projectReliability

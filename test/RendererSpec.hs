@@ -68,6 +68,7 @@ checks :: N.Window -> R.Renderer -> IO ()
 checks window r = do
   createDirectoryIfMissing True "build/verification/haskell-renderer"
   let rect=(230,70,640,480)
+  animatedRendering window r rect
   originalUI<-readIORef (N.uiState window)
   let typing=originalUI {N.focusedText=Just (44,"-"),N.frameInput=I.emptyFrame {I.heldKeys=S.singleton 87}}
   writeIORef (N.uiState window) typing
@@ -465,3 +466,46 @@ controllerReplay window=do
   finished<-readIORef (N.uiState window)
   writeIORef (N.uiState window) original {N.replay=N.replay finished}
   pass "native replayed controller snapshot, analog mapping, held buttons, focus and disconnect"
+
+animatedRendering :: N.Window -> R.Renderer -> (Float,Float,Float,Float) -> IO ()
+animatedRendering window r rect=do
+  let (_,base)=spawnMesh "Animated left" "test/fixtures/animation/fixture.gltf" emptyWorld
+      (_,two)=spawnMesh "Animated right" "test/fixtures/animation/fixture.gltf" base
+      (_,three)=spawnMesh "Shadow receiver" "cube" two
+      pose time=defaultAnimator {animationClip="move",animationTime=time,animationLoop=False}
+      scene=(emptyProject "Independent poses") {camera=Camera (V3 0 3 8) (V3 0 0.5 0) 45,environment=defaultEnvironment {sunShadows=True},world=three {animators=IM.fromList [(1,pose 0),(2,pose 1)],transforms=IM.fromList [(1,identity {position=V3 (-1.5) 1 0}),(2,identity {position=V3 1 1 0}),(3,identity {position=V3 0 (-0.5) 0,scale=V3 10 1 8})]}}
+  render window scene rect False
+  prior<-targetPixels r
+  priorShadow<-shadowPixels
+  cache<-readIORef (R.animatedInstances r)
+  errors<-R.takeErrors r
+  assert ("Animated import failed: "++show errors) (IM.member 1 cache && IM.member 2 cache)
+  bounds<-readIORef (R.poseCache r)
+  let (_,_,left)=cache IM.! 1;(_,_,right)=cache IM.! 2
+      leftMesh=head (A.modelMeshes left);rightMesh=head (A.modelMeshes right)
+  assert "Two poses shared mutable buffers or geometry" (G.vertexArray (A.meshBuffer leftMesh)/=G.vertexArray (A.meshBuffer rightMesh) && A.meshPositions leftMesh/=A.meshPositions rightMesh)
+  let ray=C.Ray (L.V3 (-2) 1.1 5) (L.V3 0 0 (-1))
+      draw=R.Draw 1 left (C.modelMatrix (transforms (world scene) IM.! 1) L.identity) defaultMaterial (R.whiteTexture r) False
+  assert "Animated CPU picking lost triangle" (R.pick ray [draw] Nothing==Just 1)
+  render window scene {world=(world scene) {animators=IM.adjust (\a->a {animationTime=1}) 1 (animators (world scene))}} rect False
+  later<-targetPixels r
+  laterShadow<-shadowPixels
+  assert "Animated vertices did not reach the shadow pass" (VS.sum (VS.zipWith (\x y->abs (x-y)) priorShadow laterShadow)>0.01)
+  updated<-readIORef (R.poseCache r)
+  assert "Changing only a pose retained stale bounds or GPU pixels" (R.cachedBounds (updated IM.! 1)/=R.cachedBounds (bounds IM.! 1) && VS.sum (VS.zipWith (\x y->abs (fromIntegral x-fromIntegral y)::Int) prior later)>1000)
+  render window scene {world=(world scene) {animators=IM.adjust (\a->a {animationClip="typing-unknown"}) 1 (animators (world scene))}} rect False
+  messages<-R.takeErrors r
+  assert "Unknown clip did not remain editable with diagnostic" (not (null messages))
+  render window scene {world=destroy 1 (world scene)} rect False
+  glIsVertexArray (G.vertexArray (A.meshBuffer leftMesh)) >>= assert "Deleted animation instance leaked" . (==GL_FALSE)
+  glIsVertexArray (G.vertexArray (A.meshBuffer rightMesh)) >>= assert "Deleting one animation removed another" . (==GL_TRUE)
+  N.unloadAssets window
+  glIsVertexArray (G.vertexArray (A.meshBuffer rightMesh)) >>= assert "Animation unload leaked" . (==GL_FALSE)
+  pass "independent skinned poses, refreshed bounds/picking/pixels, invalid clip recovery and instance lifetime"
+  where
+    shadowPixels=G.preservingState $ \_->do
+      let t=R.shadowTarget r;count=G.targetWidth t*G.targetHeight t
+      storage<-mallocForeignPtrArray count
+      glBindFramebuffer GL_READ_FRAMEBUFFER (G.framebuffer t)
+      withForeignPtr storage $ \p->glReadPixels 0 0 (fromIntegral (G.targetWidth t)) (fromIntegral (G.targetHeight t)) GL_DEPTH_COMPONENT GL_FLOAT p
+      pure (VS.unsafeFromForeignPtr0 storage count :: VS.Vector Float)

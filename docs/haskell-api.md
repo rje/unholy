@@ -126,3 +126,21 @@ X/Square to action and Start to restart. Text focus neutralizes both keyboard
 and controller game actions. These remain held actions across fixed substeps;
 games such as Threshold track their own jump/restart edges. This is a default
 mapping, not a persisted remapping editor or generalized action system.
+
+## Skeletal animation
+
+`animators :: IntMap Animator` is a typed, persisted World store. Attach
+`defaultAnimator { animationClip="walk" }` to a glTF/GLB mesh entity, then update
+`animationClip`, `animationTime`, `animationRate`, `animationLoop` and
+`animationPlaying` from a Haskell system. Time advances once per runtime tick;
+set it to zero when changing clips if a fresh phase is desired. Empty clip means
+bind pose. Paused authored time is rendered in the editor. Stop restores the
+saved configuration, and cloning/prefabs retain it.
+
+`Unholy.Animation.loadRig`, `validateAnimator`, `sampleGlobals` and `posedMeshes`
+are headless APIs. cgltf supplies copied accessor data; Haskell owns interpolation,
+complete node hierarchy and skinning. Entity transforms apply once after skinning;
+the glTF skinned mesh node transform is ignored per specification. Renderer
+instance buffers borrow textures from an immutable source and release separately.
+Use primitive gameplay colliders for animated characters. See README for the
+bounded import format and unsupported animation features.
