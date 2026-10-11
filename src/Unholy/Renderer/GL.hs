@@ -21,7 +21,7 @@ deleteObject :: (GLsizei -> Ptr GLuint -> IO ()) -> GLuint -> IO ()
 deleteObject del ident = when (ident/=0) (with ident (del 1))
 
 uniformNames :: [String]
-uniformNames = ["mvp","matModel","matNormal","texture0","shadowMap","lightVP","baseColor","metalness","roughness","emission","viewPos","sunDirection","sunColor","sunPower","ambientPower","exposure","fogColor","fogDensity","useShadows","lightCount","skyTop","skyBottom","mode"]
+uniformNames = ["mvp","matModel","matNormal","viewProjection","useInstances","texture0","shadowMap","lightVP","baseColor","metalness","roughness","emission","viewPos","sunDirection","sunColor","sunPower","ambientPower","exposure","fogColor","fogDensity","useShadows","lightCount","skyTop","skyBottom","mode"]
   ++ ["baseColorLinear","normalMap","metalMap","roughMap","emissiveMap","occlusionMap","emissiveColor","useNormalMap","normalScale","occlusionStrength"]
   ++ [field++"["++show i++"]" | i<-[0..7::Int],field<-["lightPosition","lightColor","lightPower"]]
 
@@ -97,6 +97,22 @@ drawBuffer :: GLenum -> Buffer -> IO ()
 drawBuffer primitive Buffer{..} = do
   glBindVertexArray vertexArray
   if indexed then glDrawElements primitive elementCount GL_UNSIGNED_SHORT nullPtr else glDrawArrays primitive 0 elementCount
+
+-- Linear matrices are row-major. Instance attributes consume columns, so the
+-- caller supplies transposed model/normal matrix pairs. All VAOs here are ours.
+drawInstances :: GLuint -> Buffer -> VS.Vector (M44 Float) -> IO ()
+drawInstances stream Buffer{..} matrices = do
+  glBindVertexArray vertexArray
+  glBindBuffer GL_ARRAY_BUFFER stream
+  VS.unsafeWith matrices $ \p -> glBufferData GL_ARRAY_BUFFER (fromIntegral (VS.length matrices*64)) (castPtr p) GL_STREAM_DRAW
+  forM_ [3..10] $ \attrib -> do
+    glEnableVertexAttribArray attrib
+    glVertexAttribPointer attrib 4 GL_FLOAT GL_FALSE 128 (intPtrToPtr (fromIntegral ((attrib-3)*16)))
+    glVertexAttribDivisor attrib 1
+  let count=fromIntegral (VS.length matrices `div` 2)
+  if indexed then glDrawElementsInstanced GL_TRIANGLES elementCount GL_UNSIGNED_SHORT nullPtr count
+             else glDrawArraysInstanced GL_TRIANGLES 0 elementCount count
+  forM_ [3..10] $ \attrib -> glVertexAttribDivisor attrib 0 >> glDisableVertexAttribArray attrib
 deleteBuffer :: Buffer -> IO ()
 deleteBuffer Buffer{..} = do
   deleteObject glDeleteVertexArrays vertexArray

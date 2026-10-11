@@ -103,6 +103,8 @@ checks window r = do
   blue<-pixelAtCenter r
   assert ("PBR draw/uniforms did not affect pixels: "++show (red,blue)) (fromIntegral (red!!0)>fromIntegral (red!!2)+(30::Int) && fromIntegral (blue!!2)>fromIntegral (blue!!0)+(30::Int))
   pass "direct mesh drawing and live PBR material changes affect GPU pixels"
+  scaling window r rect
+  render window fixture rect False
 
   G.preservingState $ \_ -> do
     let shadow=R.shadowTarget r
@@ -210,12 +212,59 @@ checks window r = do
   N.unloadAssets window
   R.close r
   glIsTexture (R.whiteTexture r) >>= assert "white texture leaked on close" . (==GL_FALSE)
+  glIsBuffer (R.instanceBuffer r) >>= assert "instance stream buffer leaked on close" . (==GL_FALSE)
   glIsFramebuffer (G.framebuffer viewport) >>= assert "viewport leaked on close" . (==GL_FALSE)
   glIsFramebuffer (G.framebuffer (R.shadowTarget r)) >>= assert "shadow framebuffer leaked on close" . (==GL_FALSE)
   forM_ [R.pbrProgram r,R.shadowProgram r,R.screenProgram r,R.lineProgram r] $ \p -> glIsProgram (G.programId p) >>= assert "shader program leaked on close" . (==GL_FALSE)
   R.close r
   G.checkGL "Idempotent renderer disposal"
   pass "renderer shutdown releases its GPU resources before window destruction"
+
+targetPixels :: R.Renderer -> IO (VS.Vector Word8)
+targetPixels r=G.preservingState $ \_->do
+  t<-currentTarget r
+  let count=G.targetWidth t*G.targetHeight t*4
+  bytes<-mallocForeignPtrArray count
+  glBindFramebuffer GL_READ_FRAMEBUFFER (G.framebuffer t)
+  withForeignPtr bytes $ \p->glReadPixels 0 0 (fromIntegral (G.targetWidth t)) (fromIntegral (G.targetHeight t)) GL_RGBA GL_UNSIGNED_BYTE p
+  pure (VS.unsafeFromForeignPtr0 bytes count)
+
+scaling :: N.Window -> R.Renderer -> (Float,Float,Float,Float) -> IO ()
+scaling window r rect=do
+  let (_,w)=foldl (\(_,current) i->spawnMesh ("Batch "++show i) "cube" current) (0,emptyWorld) [1..6::Int]
+      scene=(emptyProject "Instancing and off-camera shadow") {camera=Camera (V3 0 3 8) (V3 0 0 (-1)) 50,environment=defaultEnvironment {sunShadows=True,sunDirection=V3 1 (-0.5) 0},world=w {transforms=IM.fromList
+        [(1,identity {position=V3 0 (-0.5) 0,scale=V3 8 1 8})
+        ,(2,Transform (V3 (-1) 0.5 0) (V3 12 20 15) (V3 0.7 1 1.3))
+        ,(3,Transform (V3 1 0.5 0) (V3 12 (-30) 15) (V3 0.7 1 1.3))
+        ,(4,Transform (V3 (-1) 0.5 (-2)) (V3 0 15 0) (V3 1.2 0.8 0.6))
+        ,(5,Transform (V3 1 0.5 (-2)) (V3 0 (-15) 0) (V3 1.2 0.8 0.6))
+        ,(6,identity {position=V3 (-8) 4 0,scale=V3 2 2 2})]
+        ,materials=IM.fromList [(i,if i `elem` [2,3,6] then Material (V3 0.9 0.1 0.1) 0.3 0.4 0 else if i `elem` [4,5] then Material (V3 0.1 0.1 0.9) 0.7 0.25 0 else defaultMaterial) | i<-[1..6]]}}
+      difference a b=VS.zipWith (\x y->abs (fromIntegral x-fromIntegral y)::Int) a b
+  writeIORef (R.instancingEnabled r) False
+  writeIORef (R.cullingEnabled r) False
+  render window scene rect False
+  reference<-targetPixels r
+  writeIORef (R.instancingEnabled r) True
+  writeIORef (R.cullingEnabled r) True
+  render window scene rect False
+  batched<-targetPixels r
+  counts<-readIORef (R.frameStats r)
+  let errors=difference reference batched
+      meanError=fromIntegral (VS.sum errors)/fromIntegral (VS.length errors)::Double
+  assert ("instancing/culling changed visible pixels: "++show meanError) (meanError<0.35)
+  assert ("unexpected visible/batched counts: "++show counts) (R.totalMeshes counts==6 && R.visibleMeshes counts==5 && R.colorCalls counts==3 && R.shadowCalls counts==1)
+  render window scene {world=destroy 6 (world scene)} rect False
+  noCaster<-targetPixels r
+  assert "camera-invisible caster did not affect visible shadows" (VS.sum (difference batched noCaster)>10000)
+  poses<-readIORef (R.poseCache r)
+  let edited=scene {world=(world scene) {transforms=IM.adjust (\t->t {position=V3 (-0.4) 1 0}) 2 (transforms (world scene)),meshes=IM.adjust (\m->m {geometry="torus"}) 2 (meshes (world scene))}}
+  render window edited rect False
+  updated<-readIORef (R.poseCache r)
+  assert "edited pose/mesh retained stale matrices" (R.cachedMatrix (updated IM.! 2)/=R.cachedMatrix (poses IM.! 2) && R.cachedGeometry (updated IM.! 2)=="torus")
+  N.unloadAssets window
+  readIORef (R.poseCache r) >>= assert "project switch retained prepared poses" . IM.null
+  pass "instanced nonuniform meshes match scalar/unculled pixels; off-camera shadows and edited poses survive"
 
 importedMaterials :: N.Window -> R.Renderer -> (Float,Float,Float,Float) -> IO ()
 importedMaterials window r rect=do
@@ -246,6 +295,23 @@ importedMaterials window r rect=do
         assert "Packed metallic/roughness channels swapped or gamma decoded" (value==expected)
   red<-at 0 scene;blue<-at 1 scene
   assert ("Submesh GPU colors failed "++show (red,blue)) (red!!0>red!!2+35 && blue!!2>blue!!0+35)
+  let (copy,twice)=duplicate e authored
+      (overrideCopy,three)=duplicate e twice
+      grouped=scene {camera=Camera (V3 0 3 18) (V3 0 3 0) 45,world=three
+        {transforms=IM.adjust (\t->t {position=V3 0 6 0}) overrideCopy (IM.adjust (\t->t {position=V3 0 3 0}) copy (transforms three))
+        ,meshes=IM.adjust (\m->m {useImportedMaterials=False}) overrideCopy (meshes three)
+        ,materials=IM.insert overrideCopy (Material (V3 0.02 0.9 0.02) 0 0.4 0) (materials three)}}
+  writeIORef (R.instancingEnabled r) False
+  writeIORef (R.cullingEnabled r) False
+  render window grouped rect False
+  baseline<-targetPixels r
+  writeIORef (R.instancingEnabled r) True
+  writeIORef (R.cullingEnabled r) True
+  render window grouped rect False
+  optimized<-targetPixels r
+  counts<-readIORef (R.frameStats r)
+  let errorSum=VS.sum (VS.zipWith (\a b->abs (fromIntegral a-fromIntegral b)::Int) baseline optimized)
+  assert "imported slots/entity overrides bled across batches" (fromIntegral errorSum/fromIntegral (VS.length baseline)<(0.35::Double) && R.visibleMeshes counts==18 && R.colorCalls counts==12)
   actual<-at 5 scene
   let linear=((192/255+0.055)/1.055)**2.4 :: Double
       expected factor=let x=linear*factor*0.5;m=(x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14) in round (max 0 (min 1 m)**(1/2.2)*255)::Int

@@ -1,11 +1,11 @@
-# Haskell library verification — 2026-10-10
+# Haskell library verification — 2026-10-11
 
 ## Current qualification
 
 The current macOS checkpoint builds the library, editor, benchmark and both
 independently packaged games. `make test` passes 20 engine integration groups
 and the Pulse Courier and Circuit Breaker gameplay tests. `make render-test`
-passes 15 groups in a real graphics/audio context. Editor replay checks cover
+passes 16 groups in a real graphics/audio context. Editor replay checks cover
 failure recovery, authored component fields/links, gizmo undo/prefabs and
 imported material policy. The sections below retain the earlier checkpoints
 and their measured evidence.
@@ -14,6 +14,45 @@ macOS qualification uses Apple M4, GHC 9.14.1, raylib 6.0, Bullet 3.25 and
 Cabal's bundled Lua 5.4.8. Ubuntu 24.04 headless CI also passes the library/editor
 build, engine/game tests and generated-package export check. Linux desktop
 graphics, editor interaction and audible output are unqualified.
+
+## Renderer scaling checkpoint — 2026-10-11
+
+Haskell caches each entity's model/normal matrices and conservative world bounds,
+groups opaque submeshes by VAO and their full effective material, and submits
+compatible groups through a renderer-owned instance buffer. Model/normal
+attributes use column-major packing. Camera-frustum culling affects the color
+pass; the shadow pass retains every caster. Picking and overlays still use
+retained CPU triangles and entity IDs. Pose/mesh changes refresh the cache, and
+project switching clears it.
+
+The GPU comparison renders scalar draws with culling disabled, then batched
+draws with culling enabled. Mean RGBA error stays below 0.35 byte per channel;
+this allows a few raster-edge changes from floating-point matrix association.
+It covers rotated/nonuniform meshes, imported material slots mixed with entity
+overrides, an invisible caster whose shadow affects visible pixels, edited poses,
+mesh replacement, cache clearing and instance-buffer release. The actual
+gizmo/undo/prefab/save replay also passes. Engine and independent game tests pass.
+
+Matched Apple M4 runs use the same 2048 × 1536 viewport and warmed harness.
+Both modes retain the new matrix cache, isolating batching/culling from that
+earlier gain:
+
+| Rendering workload | Scalar, unculled submission mean ms | Batched, culled mean ms | Color / shadow calls after batching |
+| --- | ---: | ---: | ---: |
+| Marble Run | 3.071 | 1.919 | 52 / 21 |
+| Eight Marble Run geometry copies | 17.867 | 5.512 | 52 / 21 |
+| 1,000 cubes | 4.338 | 1.490 | 1 / 0 |
+| 4,000 cubes | 15.681 | 4.159 | 1 / 0 |
+
+The expanded workload contains 2,560 submeshes, of which 2,460 are camera-visible.
+It copies the actual level's resolved geometry/materials; it does not claim eight
+simultaneous gameplay instances. Haskell allocation there falls from 11.0 to
+8.1 MB/frame. Small scenes still incur preparation overhead, and the original
+Marble Run's allocation is higher than the pre-cache baseline. This is useful
+submission scaling, not an allocation-free renderer or a sustained-FPS claim.
+
+`--scalar --unculled` on `unholy-bench --gpu` reproduces the reference mode.
+Logs and editor/player captures are in `build/verification/scaling/`.
 
 ## Reliability checkpoint
 
@@ -243,8 +282,8 @@ and instruction-budget hook remain established native integrations. GLSL still
 runs GPU shading. File imports can create temporary native GPU data; built-in
 primitives now avoid that path entirely.
 
-The engine's own source is 3,738 Haskell lines, 274 native-adapter lines and
-160 GLSL lines: about 89.6% Haskell by physical line count. This excludes upstream
+The engine's own source is 3,814 Haskell lines, 274 native-adapter lines and
+169 GLSL lines: about 89.6% Haskell by physical line count. This excludes upstream
 libraries, the vendored widget header, tests, sample game code, generated scenes
 and tooling. It describes engine ownership, not the implementation language of
 the graphics driver, solver or decoder dependencies.

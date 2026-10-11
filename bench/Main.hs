@@ -51,16 +51,22 @@ main=runInBoundThread $ do
     (replicateM_ 240 (tick 0) >> measure ("tick-"++name) 240 tick) `finally` stopRuntime runtime
   when ("--gpu" `elem` args) $ N.withWindow "Unholy / measured renderer" "assets" $ \window->do
     renderer<-N.withRenderer window pure
+    writeIORef (R.instancingEnabled renderer) ("--scalar" `notElem` args)
+    writeIORef (R.cullingEnabled renderer) ("--unculled" `notElem` args)
     device<-glGetString GL_RENDERER >>= peekCString . castPtr
     putStrLn ("gpu_device,"++device)
-    forM_ (samples++[("stress-1000",stress 1000),("stress-4000",stress 4000)]) $ \(name,p)->do
+    let district=case samples of (_,marble):_->[("expanded-marble",expandLevel marble)];_->[]
+    forM_ (samples++district++[("stress-1000",stress 1000),("stress-4000",stress 4000)]) $ \(name,p)->do
       N.unloadAssets window
-      let draw=do _<-N.drawScene window (if take 7 name=="stress-" then "." else "projects/"++name) p (0,0,1024,768) False False Nothing;pure ()
+      let root=if take 7 name=="stress-" then "." else "projects/"++if name=="expanded-marble" then "marble-run" else name
+          draw=do _<-N.drawScene window root p (0,0,1024,768) False False Nothing;pure ()
           frame=do _<-N.frameTime window;N.begin window;draw;N.end window
       replicateM_ 20 frame
       assetErrors<-N.nativeError window
       unless (null assetErrors) (ioError (userError assetErrors))
       viewport<-readIORef (R.viewportTarget renderer)
+      stats<-readIORef (R.frameStats renderer)
+      putStrLn ("draw_counts,"++name++","++show stats)
       forM_ viewport $ \t->printf "viewport,%s,%d,%d\n" name (GL.targetWidth t) (GL.targetHeight t)
       performGC
       before<-getRTSStats
@@ -105,3 +111,12 @@ stress count=(emptyProject ("Stress "++show count)) {world=foldl add emptyWorld 
           x=fromIntegral (i `mod` 64)-32
           z=fromIntegral (i `div` 64)-32
       in next {transforms=IM.insert e (identity {position=V3 x 0 z,scale=V3 0.4 0.4 0.4}) (transforms next)}
+
+-- Eight copies of the real level's resolved geometry/materials. This is a
+-- rendering workload, not eight competing game/script/physics instances.
+expandLevel :: Project -> Project
+expandLevel p=p {world=emptyWorld {nextId=8*stride,names=combine names,transforms=IM.unions [IM.mapKeysMonotonic (+copy*stride) (IM.map (offset copy) (transforms w)) | copy<-[0..7]],meshes=combine meshes,materials=combine materials,lights=lights w},camera=Camera (V3 72 60 95) (V3 48 0 20) 55}
+  where
+    w=world p;stride=nextId w
+    combine field=IM.unions [IM.mapKeysMonotonic (+copy*stride) (field w) | copy<-[0..7]]
+    offset copy t=let V3 x y z=position t in t {position=V3 (x+fromIntegral (copy `mod` 4)*32) y (z+fromIntegral (copy `div` 4)*45)}

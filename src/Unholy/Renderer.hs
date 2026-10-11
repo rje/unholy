@@ -27,13 +27,19 @@ data Renderer = Renderer
   { pbrProgram :: !Program, shadowProgram :: !Program, screenProgram :: !Program, lineProgram :: !Program
   , shadowTarget :: !Target, viewportTarget :: !(IORef (Maybe Target))
   , meshCache :: !(IORef (M.Map FilePath ModelData)), textureCache :: !(IORef (M.Map FilePath GLuint))
-  , whiteTexture :: !GLuint, screenBuffer :: !Buffer, gridBuffer :: !Buffer, boxBuffer :: !Buffer
+  , whiteTexture :: !GLuint, neutralMaps :: ![GLuint], screenBuffer :: !Buffer, gridBuffer :: !Buffer, boxBuffer :: !Buffer
   , axisBuffers :: ![Buffer], lightBuffer :: !Buffer
   , orbitState :: !(IORef Orbit), activeCamera :: !(IORef Camera), rendererErrors :: !(IORef [String])
   , gizmoMode :: !(IORef (Maybe Gizmo.Mode)), gizmoDrag :: !(IORef (Maybe Gizmo.Drag)), gizmoEdit :: !(IORef (Maybe Gizmo.Edit)), ringBuffers :: ![Buffer]
+  , instanceBuffer :: !GLuint, poseCache :: !(IORef (IM.IntMap CachedPose))
+  , instancingEnabled :: !(IORef Bool), cullingEnabled :: !(IORef Bool), frameStats :: !(IORef FrameStats)
   , disposed :: !(IORef Bool)
   }
 data Draw = Draw { drawEntity :: !Entity, drawModel :: !ModelData, drawMatrix :: !(L.M44 Float), drawMaterial :: !Material, drawTexture :: !GLuint, drawImported :: !Bool }
+data CachedPose = CachedPose { cachedGeometry :: !FilePath, cachedModel :: !GLuint, cachedTransform :: !Transform, cachedMatrix :: !(L.M44 Float), cachedNormal :: !(L.M44 Float), cachedBounds :: !Bounds, cachedColumns :: ![L.M44 Float] }
+data FrameStats = FrameStats { totalMeshes :: !Int, visibleMeshes :: !Int, colorCalls :: !Int, shadowCalls :: !Int } deriving (Eq,Show)
+data Surface = Surface !Bool !(L.V3 Float) !Float !Float !Float !(L.V3 Float) !Float !Float ![GLuint] deriving (Eq,Ord)
+type Prepared = (Draw,CachedPose)
 
 initialize :: FilePath -> IO Renderer
 initialize root = preservingState $ \_ ->
@@ -48,7 +54,8 @@ initialize root = preservingState $ \_ ->
   bracketOnError (lineBuffer boxVertices) deleteBuffer $ \boxBuffer ->
   bracketOnError (loadBuffers [[L.V3 0 0 0,p] | p<-[L.V3 1 0 0,L.V3 0 1 0,L.V3 0 0 1]]) (mapM_ deleteBuffer) $ \axisBuffers ->
   bracketOnError (lineBuffer lightVertices) deleteBuffer $ \lightBuffer ->
-  bracketOnError (loadBuffers [concat (zipWith (\a b->[a,b]) points (drop 1 points)) | axis<-[0..2],let points=Gizmo.ringPoints axis]) (mapM_ deleteBuffer) $ \ringBuffers -> do
+  bracketOnError (loadBuffers [concat (zipWith (\a b->[a,b]) points (drop 1 points)) | axis<-[0..2],let points=Gizmo.ringPoints axis]) (mapM_ deleteBuffer) $ \ringBuffers ->
+  bracketOnError (genObject glGenBuffers) (deleteObject glDeleteBuffers) $ \instanceBuffer -> do
     gizmoMode<-newIORef Nothing
     gizmoDrag<-newIORef Nothing
     gizmoEdit<-newIORef Nothing
@@ -58,6 +65,11 @@ initialize root = preservingState $ \_ ->
     orbitState<-newIORef defaultOrbit
     activeCamera<-newIORef defaultCamera
     rendererErrors<-newIORef []
+    poseCache<-newIORef IM.empty
+    instancingEnabled<-newIORef True
+    cullingEnabled<-newIORef True
+    frameStats<-newIORef (FrameStats 0 0 0 0)
+    let neutralMaps=replicate 6 whiteTexture
     disposed<-newIORef False
     checkGL "Haskell renderer initialization"
     putStrLn "Renderer: Haskell / OpenGL 3.3 (direct GPU submission)"
@@ -90,6 +102,7 @@ unloadAssets Renderer{..} = do
   flushUI
   models<-atomicModifyIORef' meshCache (\m -> (M.empty,m))
   textures<-atomicModifyIORef' textureCache (\m -> (M.empty,m))
+  writeIORef poseCache IM.empty
   mapM_ deleteModel (M.elems models)
   mapM_ (deleteObject glDeleteTextures) (filter (/=whiteTexture) (M.elems textures))
 close :: Renderer -> IO ()
@@ -103,6 +116,7 @@ close r@Renderer{..} = do
     mapM_ (glDeleteProgram . programId) [pbrProgram,shadowProgram,screenProgram,lineProgram]
     mapM_ deleteBuffer ([screenBuffer,gridBuffer,boxBuffer,lightBuffer]++axisBuffers++ringBuffers)
     deleteObject glDeleteTextures whiteTexture
+    deleteObject glDeleteBuffers instanceBuffer
 focus :: Renderer -> V3 -> IO ()
 focus r pos = modifyIORef' (orbitState r) (\o -> o {orbitTarget=toLinear pos,orbitDistance=7})
 getCamera :: Renderer -> IO Camera
@@ -177,10 +191,25 @@ drawScene r mouse down snapping root project rect@(x,y,w,h) (screenW,screenH) ed
         displayed=maybe (world project) (\change->setTransform (Gizmo.editEntity change) (Gizmo.editTransform change) (world project)) edited
     writeIORef (gizmoDrag r) nextDrag
     writeIORef (gizmoEdit r) edited
-    draws<-forM (renderables displayed) $ \(e,t,m,mat) -> do
-      model<-getModelFor r (useImportedMaterials m) (if geometry m `elem` builtins then geometry m else root </> geometry m)
+    priorPoses<-readIORef (poseCache r)
+    prepared<-forM (renderables displayed) $ \(e,t,m,mat) -> do
+      let path=if geometry m `elem` builtins then geometry m else root </> geometry m
+      model<-getModelFor r (useImportedMaterials m) path
       tex<-getTexture r (if null (texture m) then "" else root </> texture m)
-      pure (Draw e model (modelMatrix t (importTransform model)) mat tex (useImportedMaterials m))
+      let pose=case IM.lookup e priorPoses of
+            Just cached | cachedGeometry cached==path && cachedModel cached==vertexArray (meshBuffer (head (modelMeshes model))) && cachedTransform cached==t -> cached
+            _->let matrix=modelMatrix t (importTransform model);normal=L.transpose (L.inv44 matrix)
+               in CachedPose path (vertexArray (meshBuffer (head (modelMeshes model)))) t matrix normal (transformBounds matrix (modelBounds model)) [L.transpose matrix,L.transpose normal]
+      pure (Draw e model (cachedMatrix pose) mat tex (useImportedMaterials m),pose)
+    writeIORef (poseCache r) (IM.fromDistinctAscList [(drawEntity d,pose) | (d,pose)<-prepared])
+    useBatch<-readIORef (instancingEnabled r)
+    cull<-readIORef (cullingEnabled r)
+    let draws=map fst prepared
+        visible=if cull then filter (inFrustum (frustumPlanes vp) . cachedBounds . snd) prepared else prepared
+        colors=M.fromListWith merge [( (vertexArray buffer,surface), (buffer,surface,[pose])) | (d,pose)<-visible,mesh<-modelMeshes (drawModel d),let buffer=meshBuffer mesh;surface=resolveSurface r d mesh]
+        shadows=M.fromListWith mergeShadow [(vertexArray buffer,(buffer,[pose])) | (d,pose)<-prepared,mesh<-modelMeshes (drawModel d),let buffer=meshBuffer mesh]
+        callCount poses=if useBatch && length poses>1 then 1 else length poses
+    writeIORef (frameStats r) (FrameStats (sum [length (modelMeshes (drawModel d)) | (d,_)<-prepared]) (sum [length (modelMeshes (drawModel d)) | (d,_)<-visible]) (sum [callCount poses | (_,_,poses)<-M.elems colors]) (if sunShadows env then sum [callCount poses | (_,poses)<-M.elems shadows] else 0))
     viewport<-ensureViewport r renderW renderH
     glDisable GL_SCISSOR_TEST
     glDisable GL_BLEND
@@ -193,9 +222,8 @@ drawScene r mouse down snapping root project rect@(x,y,w,h) (screenW,screenH) ed
       bindTarget (shadowTarget r)
       glClear GL_DEPTH_BUFFER_BIT
       glUseProgram (programId (shadowProgram r))
-      forM_ draws $ \d -> do
-        matrixUniform (shadowProgram r) "mvp" (lightVP L.!*! drawMatrix d)
-        drawGeometry d
+      matrixUniform (shadowProgram r) "viewProjection" lightVP
+      forM_ (M.elems shadows) $ \(buffer,poses)->submit r useBatch (shadowProgram r) lightVP buffer poses
     bindTarget viewport
     glClear (GL_COLOR_BUFFER_BIT .|. GL_DEPTH_BUFFER_BIT)
     glDisable GL_DEPTH_TEST
@@ -211,31 +239,10 @@ drawScene r mouse down snapping root project rect@(x,y,w,h) (screenW,screenH) ed
     glEnable GL_DEPTH_TEST
     glEnable GL_CULL_FACE
     setEnvironment r cam env lightVP displayed
-    forM_ draws $ \d -> do
-      let shader=pbrProgram r;mat=drawMaterial d;model=drawMatrix d
-      matrixUniform shader "mvp" (vp L.!*! model)
-      matrixUniform shader "matModel" model
-      matrixUniform shader "matNormal" (L.transpose (L.inv44 model))
-      forM_ (modelMeshes (drawModel d)) $ \mesh -> do
-        let source=if drawImported d then importedMaterial mesh else Nothing
-            info=maybe F.defaultInfo materialInfo source
-            slot i=maybe (whiteTexture r) id (source >>= textureSlot i)
-            tex=if drawTexture d==whiteTexture r then maybe (whiteTexture r) id (importedTexture mesh) else drawTexture d
-        intUniform shader "baseColorLinear" (if maybe False (const True) source then 1 else 0)
-        vectorUniform shader "baseColor" (maybe (toLinear (albedo mat)) (F.baseFactor . materialInfo) source)
-        floatUniform shader "metalness" (maybe (metallic mat) (F.metalFactor . materialInfo) source)
-        floatUniform shader "roughness" (maybe (roughness mat) (F.roughFactor . materialInfo) source)
-        floatUniform shader "emission" (if maybe False (const True) source then 0 else emission mat)
-        vectorUniform shader "emissiveColor" (maybe (L.V3 0 0 0) (F.emissiveFactor . materialInfo) source)
-        floatUniform shader "normalScale" (F.normalScale info)
-        floatUniform shader "occlusionStrength" (maybe 0 (F.occlusionStrength . materialInfo) source)
-        intUniform shader "useNormalMap" (if slot 1/=whiteTexture r then 1 else 0)
-        forM_ (zip [2..6] [1..5]) $ \(unit,i)->do
-          glActiveTexture (GL_TEXTURE0+unit)
-          glBindTexture GL_TEXTURE_2D (slot i)
-        glActiveTexture GL_TEXTURE0
-        glBindTexture GL_TEXTURE_2D tex
-        drawBuffer GL_TRIANGLES (meshBuffer mesh)
+    matrixUniform (pbrProgram r) "viewProjection" vp
+    forM_ (M.elems colors) $ \(buffer,surface,poses)->do
+      applySurface (pbrProgram r) (whiteTexture r) surface
+      submit r useBatch (pbrProgram r) vp buffer poses
     when edit $ do
       drawOverlays r vp displayed draws grid selected
       forM_ active $ \tool -> forM_ (selected >>= (\e->IM.lookup e (transforms displayed))) $ \pose ->
@@ -254,6 +261,48 @@ drawScene r mouse down snapping root project rect@(x,y,w,h) (screenW,screenH) ed
     drawBuffer GL_TRIANGLES (screenBuffer r)
     checkGL "Haskell scene rendering"
     pure $ if edit && not captured && mouseEnabled sceneMouse && leftPressed mouse && inside inputRect mouse then pick (screenRay rect cam mouse) draws selected else selected
+
+merge :: (Buffer,Surface,[CachedPose]) -> (Buffer,Surface,[CachedPose]) -> (Buffer,Surface,[CachedPose])
+merge (buffer,surface,a) (_,_,b)=(buffer,surface,a++b)
+mergeShadow :: (Buffer,[CachedPose]) -> (Buffer,[CachedPose]) -> (Buffer,[CachedPose])
+mergeShadow (buffer,a) (_,b)=(buffer,a++b)
+submit :: Renderer -> Bool -> Program -> L.M44 Float -> Buffer -> [CachedPose] -> IO ()
+submit r batches shader vp buffer poses
+  | batches && length poses>1 = do
+      intUniform shader "useInstances" 1
+      drawInstances (instanceBuffer r) buffer (VS.fromList (concatMap cachedColumns poses))
+  | otherwise = do
+      intUniform shader "useInstances" 0
+      forM_ poses $ \pose->do
+        matrixUniform shader "mvp" (vp L.!*! cachedMatrix pose)
+        matrixUniform shader "matModel" (cachedMatrix pose)
+        matrixUniform shader "matNormal" (cachedNormal pose)
+        drawBuffer GL_TRIANGLES buffer
+resolveSurface :: Renderer -> Draw -> MeshData -> Surface
+resolveSurface r d mesh = Surface (maybe False (const True) source) color metal rough emit glow (F.normalScale info) occlusion maps
+  where
+    mat=drawMaterial d
+    source=if drawImported d then importedMaterial mesh else Nothing
+    info=maybe F.defaultInfo materialInfo source
+    color=maybe (toLinear (albedo mat)) (F.baseFactor . materialInfo) source
+    metal=maybe (metallic mat) (F.metalFactor . materialInfo) source
+    rough=maybe (roughness mat) (F.roughFactor . materialInfo) source
+    emit=maybe (emission mat) (const 0) source
+    glow=maybe (L.V3 0 0 0) (F.emissiveFactor . materialInfo) source
+    occlusion=maybe 0 (F.occlusionStrength . materialInfo) source
+    base=if drawTexture d==whiteTexture r then maybe (whiteTexture r) id (importedTexture mesh) else drawTexture d
+    maps=case source of
+      Nothing | base==whiteTexture r -> neutralMaps r
+              | otherwise -> base:drop 1 (neutralMaps r)
+      Just imported->base:[maybe (whiteTexture r) id (textureSlot i imported) | i<-[1..5]]
+applySurface :: Program -> GLuint -> Surface -> IO ()
+applySurface shader white (Surface linear color metal rough emit glow normal occlusion maps) = do
+  intUniform shader "baseColorLinear" (if linear then 1 else 0)
+  vectorUniform shader "baseColor" color
+  vectorUniform shader "emissiveColor" glow
+  forM_ [("metalness",metal),("roughness",rough),("emission",emit),("normalScale",normal),("occlusionStrength",occlusion)] $ \(name,value)->floatUniform shader name value
+  intUniform shader "useNormalMap" (if maps!!1/=white then 1 else 0)
+  forM_ (zip [0,2,3,4,5,6] maps) $ \(unit,tex)->glActiveTexture (GL_TEXTURE0+unit) >> glBindTexture GL_TEXTURE_2D tex
 
 drawGeometry :: Draw -> IO ()
 drawGeometry d = forM_ (modelMeshes (drawModel d)) (drawBuffer GL_TRIANGLES . meshBuffer)

@@ -72,6 +72,17 @@ boundsCorners (V3 lx ly lz,V3 hx hy hz) = [V3 x y z | x<-[lx,hx],y<-[ly,hy],z<-[
 transformBounds :: M44 Float -> Bounds -> Bounds
 transformBounds m b = boundsOf (VS.fromList (map (transformPoint m) (boundsCorners b)))
 
+-- Clip planes operate on a conservative world-space AABB. No perspective
+-- division is involved, including for boxes crossing the eye/near plane.
+frustumPlanes :: M44 Float -> [V4 Float]
+frustumPlanes (V4 a b c d) = [d+a,d-a,d+b,d-b,d+c,d-c]
+inFrustum :: [V4 Float] -> Bounds -> Bool
+inFrustum planes (V3 lx ly lz,V3 hx hy hz) = all intersects planes
+  where
+    cx=(lx+hx)/2;cy=(ly+hy)/2;cz=(lz+hz)/2
+    ex=(hx-lx)/2;ey=(hy-ly)/2;ez=(hz-lz)/2
+    intersects (V4 x y z w) = x*cx+y*cy+z*cz+w+abs x*ex+abs y*ey+abs z*ez >= 0
+
 -- A ray transformed into object space keeps its unnormalised direction: its
 -- parameter still measures world distance, including under nonuniform scale.
 objectRay :: M44 Float -> Ray -> Ray

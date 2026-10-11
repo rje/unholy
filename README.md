@@ -239,6 +239,10 @@ runs on the window's bound OS thread and explicitly releases resources there.
 It flushes pending UI batches and restores OpenGL state around its passes.
 Viewport targets use actual framebuffer pixels, supporting Retina scaling.
 `native/assets.c` is an importer ABI adapter and contains no scene drawing.
+The renderer caches entity model/normal matrices, culls conservative world bounds
+against the camera frustum, and instances compatible opaque submeshes by geometry
+and effective material. Shadow casters use a separate list; camera culling does
+not remove their shadows. CPU geometry/entity identity remain available for picking.
 
 `Unholy.Script.API` exposes live proxies for entities and their components. Reads
 look up current Haskell ECS data on demand; setters update only the requested
@@ -300,10 +304,10 @@ Linux export requires the native libraries installed on the destination machine.
 
 The next targets follow these limits and the measured baseline:
 
-1. Reduce renderer submission cost in Haskell: cache frame transforms, cull
-   invisible geometry, group material state and instance repeated meshes. The
-   4,000-cube baseline spends about 39 ms submitting draws on an M4; this needs
-   work before larger scenes are a useful promise.
+1. Continue measuring renderer scaling. Transform reuse, camera culling and
+   material/mesh instancing now reduce the 4,000-cube submission workload from
+   the original 39 ms to about 4.2 ms on an M4. Eight copies of Marble Run's
+   geometry take about 5.5 ms; these component timings do not establish game FPS.
 2. Add environment-map IBL to the Haskell renderer and exercise it in Material
    Gallery, with the existing sun/shadow path retained.
 3. Extend a playable sample with the collider/input support it needs: reuse
