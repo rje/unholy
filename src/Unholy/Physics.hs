@@ -1,10 +1,14 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 module Unholy.Physics
-  ( Physics, Contact(..), CollisionEvent(..), RayHit(..), createPhysics, closePhysics
+  ( Physics, Contact(..), CollisionEvent(..), RayHit(..), createPhysics, createPhysicsAt, closePhysics
   , configurePhysics, requestTeleport, synchronizePhysics, stepPhysics, collisionEvents, raycastPhysics, bodyCount ) where
 
 import Unholy.Types
 import Unholy.Transform
+import Unholy.Asset.CPU (loadTriangles)
+import qualified Data.Vector.Storable as VS
+import System.FilePath ((</>))
+import Control.Exception (mask,mask_,bracketOnError,onException)
 import qualified Data.IntMap.Strict as IM
 import qualified Data.Map.Strict as M
 import qualified Data.IntSet as IS
@@ -14,16 +18,16 @@ import Foreign.C
 import Data.IORef
 import Control.Monad (forM_, forM, unless, when)
 
-data NativeBody = NativeBody { bodyHandle :: Ptr (), lastTransform :: Transform, lastBody :: Body }
+data NativeBody = NativeBody { bodyHandle :: Ptr (), lastTransform :: Transform, lastBody :: Body, lastGeometry :: Maybe FilePath }
 data Contact = Contact { contactA :: Entity, contactB :: Entity, contactNormal :: V3, contactPoint :: V3, contactDistance :: Float, contactImpulse :: Float } deriving (Eq,Show)
 data CollisionEvent = CollisionEvent { collisionKind :: String, collisionContact :: Contact, collisionTrigger :: Bool } deriving (Eq,Show)
 data RayHit = RayHit { hitEntity :: Entity, hitPoint :: V3, hitNormal :: V3, hitFraction :: Float } deriving (Eq,Show)
-data Physics = Physics { nativeWorld :: Ptr (), registry :: IORef (IM.IntMap NativeBody), settings :: IORef PhysicsSettings
+data Physics = Physics { assetRoot :: FilePath, nativeWorld :: Ptr (), registry :: IORef (IM.IntMap NativeBody), settings :: IORef PhysicsSettings
   , previousPairs :: IORef (M.Map (Entity,Entity) (Contact,Bool)), events :: IORef [CollisionEvent], disposed :: IORef Bool, teleports :: IORef IS.IntSet }
 foreign import ccall unsafe "hj_physics_new" cNew :: IO (Ptr ())
 foreign import ccall unsafe "hj_physics_close" cClose :: Ptr () -> IO ()
 foreign import ccall unsafe "hj_physics_gravity" cGravity :: Ptr () -> Ptr CFloat -> IO ()
-foreign import ccall unsafe "hj_body_new" cAdd :: Ptr () -> CInt -> CInt -> CInt -> CFloat -> CFloat -> CFloat -> Ptr CFloat -> IO (Ptr ())
+foreign import ccall unsafe "hj_body_new" cAdd :: Ptr () -> CInt -> CInt -> CInt -> CFloat -> CFloat -> CFloat -> Ptr CFloat -> Ptr Float -> CInt -> IO (Ptr ())
 foreign import ccall unsafe "hj_body_close" cRemove :: Ptr () -> Ptr () -> IO ()
 foreign import ccall unsafe "hj_body_scale" cScale :: Ptr () -> Ptr () -> Ptr CFloat -> IO ()
 foreign import ccall unsafe "hj_body_motion_pose" cMotion :: Ptr () -> Ptr CFloat -> IO ()
@@ -42,12 +46,16 @@ poseData t = vlist (position t)++[x,y,z,w]
 colliderScale :: Transform -> Body -> V3
 colliderScale t b = if bodyShape b==Sphere then let s=maximum (vlist (scale t)) in V3 s s s else scale t
 createPhysics :: World -> IO Physics
-createPhysics w = do
-  ptr<-cNew
-  p<-Physics ptr <$> newIORef IM.empty <*> newIORef defaultPhysicsSettings <*> newIORef M.empty <*> newIORef [] <*> newIORef False <*> newIORef IS.empty
-  floats (vlist (gravity defaultPhysicsSettings)) (cGravity ptr)
+createPhysics=createPhysicsAt "."
+createPhysicsAt :: FilePath -> World -> IO Physics
+createPhysicsAt root w=bracketOnError acquire closePhysics $ \p->do
+  floats (vlist (gravity defaultPhysicsSettings)) (cGravity (nativeWorld p))
   synchronize p (resolveWorld w)
   pure p
+  where acquire=do
+          ptr<-cNew
+          when (ptr==nullPtr) (ioError (userError "Cannot create Bullet world"))
+          Physics root ptr <$> newIORef IM.empty <*> newIORef defaultPhysicsSettings <*> newIORef M.empty <*> newIORef [] <*> newIORef False <*> newIORef IS.empty
 configurePhysics :: Physics -> PhysicsSettings -> IO ()
 configurePhysics p config = do
   closed<-readIORef (disposed p)
@@ -56,7 +64,7 @@ configurePhysics p config = do
   when (gravity old/=gravity config) (floats (vlist (gravity config)) (cGravity (nativeWorld p)))
   writeIORef (settings p) config
 closePhysics :: Physics -> IO ()
-closePhysics p = do
+closePhysics p = mask_ $ do
   closed<-atomicModifyIORef' (disposed p) (\x -> (True,x))
   unless closed $ do
     handles<-atomicModifyIORef' (registry p) (\x -> (IM.empty,x))
@@ -71,37 +79,51 @@ requestTeleport p e=modifyIORef' (teleports p) (IS.insert e)
 synchronizePhysics :: Physics -> World -> IO ()
 synchronizePhysics p = synchronize p . resolveWorld
 synchronize :: Physics -> World -> IO ()
-synchronize p w = do
+synchronize p w = mask $ \restore->do
   closed<-readIORef (disposed p)
   when closed (ioError (userError "Physics world is closed"))
+  either (ioError . userError) pure (validateWorld w)
   old<-readIORef (registry p)
-  resets<-atomicModifyIORef' (teleports p) (\queued->(IS.empty,queued))
+  resets<-readIORef (teleports p)
   let desired=IM.intersection (bodies w) (transforms w)
-  forM_ (IM.elems (IM.difference old desired)) (cRemove (nativeWorld p) . bodyHandle)
-  next<-IM.traverseWithKey (sync old resets) desired
+      geometryFor e b=if bodyShape b `elem` [Convex,TriangleMesh] then geometry <$> IM.lookup e (meshes w) else Nothing
+      compatible e b native=configuration (lastBody native)==configuration b && lastGeometry native==geometryFor e b
+      replacements=IM.filterWithKey (\e b->maybe True (not . compatible e b) (IM.lookup e old)) desired
+      removed=IM.filterWithKey (\e _->not (IM.member e desired) || IM.member e replacements) old
+  acquired<-newIORef IM.empty
+  -- Loading a later file can fail. Keep the entire old registry alive until
+  -- every replacement exists; release only the newly acquired bodies on error.
+  fresh<-(IM.traverseWithKey (\e b->do
+    value<-createBody restore e b (geometryFor e b)
+    modifyIORef' acquired (IM.insert e value)
+    pure value) replacements) `onException` (readIORef acquired >>= mapM_ (cRemove ptr . bodyHandle))
+  let handles=IM.union fresh (IM.difference old removed)
+  forM_ removed (cRemove ptr . bodyHandle)
+  next<-IM.traverseWithKey (\e b->do
+    let native=handles IM.! e;t=transforms w IM.! e;h=bodyHandle native;lastT=lastTransform native
+    when (scale t/=scale lastT) (floats (vlist (colliderScale t b)) (cScale ptr h))
+    if kinematic b && not (IS.member e resets) then floats (poseData t) (cMotion h) else
+      when (IS.member e resets || position t/=position lastT || rotation t/=rotation lastT) $ do
+        floats (poseData t) $ \d->cPose ptr h d >> cMotion h d
+        cClear h
+    when (IS.member e resets || velocity b/=velocity (lastBody native)) (floats (vlist (velocity b)) (cVelocity h))
+    pure native {lastTransform=t,lastBody=b}) desired
   writeIORef (registry p) next
+  modifyIORef' (teleports p) (`IS.difference` resets)
   where
     ptr=nativeWorld p
     configuration b=b {velocity=V3 0 0 0,grounded=False}
-    sync old resets e b = do
+    createBody restore e b asset=do
+      points<-case asset of
+        Nothing->pure VS.empty
+        Just path->restore (loadTriangles (if path `elem` ["cube","sphere","plane","cylinder","torus","capsule"] then path else assetRoot p </> path))
       let t=transforms w IM.! e
-      native<-case IM.lookup e old of
-        Just n | configuration (lastBody n)==configuration b -> pure n
-        prior -> do
-          forM_ prior (cRemove ptr . bodyHandle)
-          let flags=(if kinematic b then 2 else if mass b==0 then 1 else 0)+(if trigger b then 4 else 0)
-              ccd=if mass b>0 then [0.25,0.2*minimum (vlist (scale t))] else [0,0]
-              data'=poseData t++vlist (colliderScale t b)++vlist (velocity b)++[linearDamping b,angularDamping b]++ccd
-          h<-floats data' (cAdd ptr (fromIntegral e) (if bodyShape b==Sphere then 1 else 0) flags (realToFrac (mass b)) (realToFrac (restitution b)) (realToFrac (friction b)))
-          pure (NativeBody h t b)
-      let h=bodyHandle native;lastT=lastTransform native
-      when (scale t/=scale lastT) (floats (vlist (colliderScale t b)) (cScale ptr h))
-      if kinematic b && not (IS.member e resets) then floats (poseData t) (cMotion h) else
-        when (IS.member e resets || position t/=position lastT || rotation t/=rotation lastT) $ do
-          floats (poseData t) $ \d -> cPose ptr h d >> cMotion h d
-          cClear h
-      when (IS.member e resets || velocity b/=velocity (lastBody native)) (floats (vlist (velocity b)) (cVelocity h))
-      pure native {lastTransform=t,lastBody=b}
+          flags=(if kinematic b then 2 else if mass b==0 then 1 else 0)+(if trigger b then 4 else 0)
+          ccd=if mass b>0 then [0.25,0.2*minimum (vlist (scale t))] else [0,0]
+          data'=poseData t++vlist (colliderScale t b)++vlist (velocity b)++[linearDamping b,angularDamping b]++ccd++[if lockRotation b then 1 else 0]
+      h<-floats data' $ \d->VS.unsafeWith points $ \vertices->cAdd ptr (fromIntegral e) (fromIntegral (fromEnum (bodyShape b))) flags (realToFrac (mass b)) (realToFrac (restitution b)) (realToFrac (friction b)) d (castPtr vertices) (fromIntegral (VS.length points))
+      when (h==nullPtr) (ioError (userError ("Cannot create Bullet collider for entity "++show e)))
+      pure (NativeBody h t b asset)
 stepPhysics :: Physics -> Float -> World -> IO World
 stepPhysics p dt input = do
   let w=resolveWorld input

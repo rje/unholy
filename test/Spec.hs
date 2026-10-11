@@ -1,5 +1,6 @@
 module Main where
 
+import PhysicsSpec
 import LibrarySpec
 import ReliabilitySpec
 import AuthoringSpec
@@ -72,6 +73,7 @@ main = do
   test "Prefab assemblies: transforms, duplication, deletion and persistence" prefabAssembly
   test "Physics triggers, raycasts, gravity and body lifetime" physicsQueries
   test "Spawned scripts start once and destroyed assemblies clean up" runtimeLifecycle
+  test "Capsule, convex and imported triangle colliders with transactional failure recovery" extendedColliders
   test "Bullet settles a falling sphere and reports grounding" $ do
     let (floorId,w0)=spawnMesh "Floor" "cube" emptyWorld
         (ball,w1)=spawnMesh "Ball" "sphere" w0

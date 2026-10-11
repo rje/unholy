@@ -13,3 +13,9 @@ from <https://github.com/nothings/stb>. Its MIT/public-domain license is include
 at the end of the header. Only HDR decoding is compiled, with private static
 symbols; Haskell copies linear float samples and owns all retained GPU data.
 This avoids depending on raylib's optional `SUPPORT_FILEFORMAT_HDR` switch.
+
+`cgltf.h` v1.15 is pinned to jkuhlmann/cgltf commit
+`360db1a95480fe102ae9c69b27c5d101167ff5ba`.
+Source: <https://github.com/jkuhlmann/cgltf>. Its MIT license is in
+`cgltf-LICENSE`. The CPU-only adapter uses private symbols and does not create
+GPU resources; Haskell copies decoded accessors and owns engine policy.

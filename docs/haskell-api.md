@@ -106,3 +106,23 @@ rebuild when source changes; there is no runtime GHC compiler or plugin loader.
 `python3 scripts/new-game.py /path/to/my-game --name my-game` creates a separately
 built playable package with its own scene and source, pinned to the public engine
 revision. Use `--engine-local /path/to/unholy` during engine development.
+
+## Collider and controller additions
+
+`BodyShape` includes `Capsule`, `Convex` and `TriangleMesh`. `lockRotation=True`
+keeps a dynamic capsule upright. Its unit radius is 0.5, cylindrical height 1
+and total height 2; capsules require uniform scale. Convex and triangle bodies
+use the entity's `Mesh.geometry`, decoded without a graphics context for glTF/GLB
+or generated in Haskell for built-ins. Triangle bodies must be static and
+nonkinematic. Node transforms are baked once, then the entity transform applies.
+`createPhysicsAt projectRoot world` supplies project-relative file lookup; the
+existing `createPhysics` uses `.`. Failed replacement acquisition preserves the
+old registry, and Stop releases both Bullet shapes and their backing meshes.
+
+`FrameInput.gamepad` contains the first controller's connection state, left
+stick and held buttons. `gameInput` applies a radial 0.18 dead zone, combines
+keyboard/stick movement with per-axis clamping and maps A/Cross to jump,
+X/Square to action and Start to restart. Text focus neutralizes both keyboard
+and controller game actions. These remain held actions across fixed substeps;
+games such as Threshold track their own jump/restart edges. This is a default
+mapping, not a persisted remapping editor or generalized action system.

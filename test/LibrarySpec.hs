@@ -42,6 +42,15 @@ typedInputComponents=do
   assert "Default keyboard bindings" (gameInput False input==expected)
   assert "Text focus suppresses game controls" (gameInput True input==Input 0 0 False False False)
   assert "Opposing bindings cancel" (moveX (gameInput False input {heldKeys=S.fromList [65,68]})==0)
+  let pad=emptyFrame {gamepad=Gamepad True 1 (-1) (S.fromList [7,8,15])}
+      analog=gameInput False pad
+      magnitude=sqrt (moveX analog^2+moveZ analog^2)
+  assert "Controller radial clamping" (abs (magnitude-1)<0.0001 && jump analog && restart analog && action analog)
+  assert "Controller dead zone" (radialStick 0.1 0.1==(0,0))
+  assert "Controller disconnect neutralizes stale state" (gameInput False pad {gamepad=(gamepad pad) {connected=False}}==Input 0 0 False False False)
+  assert "Controller focus suppression" (gameInput True pad==Input 0 0 False False False)
+  assert "Keyboard and controller axes clamp" (moveX (gameInput False pad {heldKeys=S.singleton 68})==1)
+  assert "Held controller buttons persist across fixed ticks" (all jump (replicate 4 (gameInput False pad)))
   let (e,w)=spawn "Typed entity" emptyWorld
       components=ECS.insert e (42::Int) ECS.empty
   assert "Game-owned typed component lookup" (ECS.lookup e components==Just 42)

@@ -42,7 +42,7 @@ startRuntimeWith registry sound root p = mask $ \restore -> do
   definition<-either (ioError.userError) pure (Game.findGame registry p)
   missing<-Game.checkGameAssets registry root p
   when (not (null missing)) (ioError (userError (unlines missing)))
-  phy<-createPhysics (world p)
+  phy<-createPhysicsAt root (world p)
   owned<-newIORef IM.empty
   closed<-newIORef False
   scope<-Resource.newScope

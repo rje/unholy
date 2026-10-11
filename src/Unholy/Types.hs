@@ -17,11 +17,14 @@ data FieldValue = FloatValue !Float | TextValue String | BoolValue !Bool | Entit
   deriving (Eq,Show,Read)
 type Fields = M.Map String FieldValue
 type Authored = M.Map String Fields
-data BodyShape = Box | Sphere deriving (Eq,Show,Read)
-data Body = Body { bodyShape :: !BodyShape, mass :: !Float, velocity :: !V3, restitution :: !Float, friction :: !Float, grounded :: !Bool, kinematic :: !Bool, trigger :: !Bool, linearDamping :: !Float, angularDamping :: !Float }
+data BodyShape = Box | Sphere | Capsule | Convex | TriangleMesh deriving (Enum,Bounded,Eq,Show,Read)
+shapeName :: BodyShape -> String
+shapeName shape=case shape of Box->"box";Sphere->"sphere";Capsule->"capsule";Convex->"convex";TriangleMesh->"triangle-mesh"
+
+data Body = Body { bodyShape :: !BodyShape, mass :: !Float, velocity :: !V3, restitution :: !Float, friction :: !Float, grounded :: !Bool, kinematic :: !Bool, trigger :: !Bool, linearDamping :: !Float, angularDamping :: !Float, lockRotation :: !Bool }
   deriving (Eq,Show,Read)
 defaultBody :: Body
-defaultBody = Body Box 0 (V3 0 0 0) 0.15 0.6 False False False 0.04 0.08
+defaultBody = Body Box 0 (V3 0 0 0) 0.15 0.6 False False False 0.04 0.08 False
 data Parent = Parent { parentEntity :: !Entity, localTransform :: !Transform } deriving (Eq,Show,Read)
 data PhysicsSettings = PhysicsSettings { gravity :: !V3, supportNormal :: !Float, supportDistance :: !Float } deriving (Eq,Show,Read)
 defaultPhysicsSettings :: PhysicsSettings
@@ -108,6 +111,7 @@ validateWorld w
   | IM.size (lights w) > 8 = Left "This renderer supports at most eight point lights"
   | any (\l -> not (validV (lightColor l)) || not (finite (intensity l)) || intensity l < 0) (IM.elems (lights w)) = Left "Invalid point light"
   | any badBody (IM.elems (bodies w)) = Left "Invalid rigid body"
+  | any badCollider (IM.toList (bodies w)) = Left "Capsules require uniform scale; mesh colliders require a mesh; triangle colliders must be static"
   | any badAuthored (IM.elems (authored w)) = Left "Invalid authored component field or entity reference"
   | otherwise = Right ()
   where
@@ -124,6 +128,11 @@ validateWorld w
                    | otherwise = maybe False (cycleAt (e:seen) . parentEntity) (IM.lookup e (parents w))
     badTransform (Transform p r s) = not (all validV [p,r,s]) || any (<=0) (vlist s)
     badMaterial (Material a m r e) = not (validV a) || any (\x -> x<0 || x>1) (vlist a) || not (all finite [m,r,e]) || m<0 || m>1 || r<0.04 || r>1 || e<0
+    badCollider (e,b)=
+      let V3 x y z=scale (transforms w IM.! e)
+      in (bodyShape b==Capsule && (abs (x-y)>0.0001 || abs (x-z)>0.0001))
+        || (bodyShape b `elem` [Convex,TriangleMesh] && not (IM.member e (meshes w)))
+        || (bodyShape b==TriangleMesh && (mass b/=0 || kinematic b))
     badBody b = not (validV (velocity b) && all finite [mass b,restitution b,friction b,linearDamping b,angularDamping b]) || mass b<0 || restitution b<0 || restitution b>1 || friction b<0 || (kinematic b && mass b/=0) || (trigger b && mass b/=0) || linearDamping b<0 || linearDamping b>1 || angularDamping b<0 || angularDamping b>1
 
 finite :: Float -> Bool

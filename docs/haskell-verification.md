@@ -2,10 +2,10 @@
 
 ## Current qualification
 
-The current macOS checkpoint builds the library, editor, benchmark and both
-independently packaged games. `make test` passes 20 engine integration groups
-and the Pulse Courier and Circuit Breaker gameplay tests. `make render-test`
-passes 17 groups in a real graphics/audio context. Editor replay checks cover
+The current macOS checkpoint builds the library, editor, benchmark and three
+independently packaged games. `make test` passes 21 engine integration groups
+and the Pulse Courier, Circuit Breaker and Threshold gameplay tests. `make render-test`
+passes 19 groups in a real graphics/audio context. Editor replay checks cover
 failure recovery, authored component fields/links, gizmo undo/prefabs and
 imported material policy. The sections below retain the earlier checkpoints
 and their measured evidence.
@@ -14,6 +14,32 @@ macOS qualification uses Apple M4, GHC 9.14.1, raylib 6.0, Bullet 3.25 and
 Cabal's bundled Lua 5.4.8. Ubuntu 24.04 headless CI also passes the library/editor
 build, engine/game tests and generated-package export check. Linux desktop
 graphics, editor interaction and audible output are unqualified.
+
+## Collider and controller checkpoint — 2026-10-11
+
+Bullet now supports upright capsules, convex mesh hulls and static triangle mesh
+colliders alongside boxes and spheres. Pinned cgltf supplies validated CPU
+accessors; Haskell imports transformed triangles without a graphics context.
+Physics replacement acquires all new bodies before discarding old ones, retaining
+the live registry and pending teleports if a new asset fails. Native shapes own
+borrowed triangle memory. Rotation locking is an authored body field.
+
+Threshold is a separately packaged Haskell game with a capsule traveler, sloping
+triangle-mesh causeway, pushable convex block, required jump, moving shuttle and
+three collectible beacons. Its gameplay test proves grounded ramp traversal,
+block displacement, jumping over a barrier that blocks walking, completion and
+reset. The real editor replay completes, resets and stops; Stop restores the
+authored scene. Controller replays complete both the local player and a relocated
+export launched from /tmp. Captures were inspected; project bytes remain unchanged.
+Receipts are in `build/verification/threshold/`.
+
+The default controller policy lives in Haskell: radial 0.18 deadzone, analog
+movement, south jump, west action and Start restart. Focus suppresses keyboard
+and controller gameplay input. The GPU suite replays the native device adapter,
+including held buttons and disconnection; no physical controller was available,
+and remapping is not included. Independent rendered glTF geometry agrees with
+CPU collider import under transformed parent nodes. All 21 engine groups, three
+game suites and 19 GPU/audio groups pass.
 
 ## HDR environment checkpoint — 2026-10-11
 
@@ -310,8 +336,8 @@ and instruction-budget hook remain established native integrations. GLSL still
 runs GPU shading. File imports can create temporary native GPU data; built-in
 primitives now avoid that path entirely.
 
-The engine's own source is 3,977 Haskell lines, 284 native-adapter lines and
-292 GLSL lines: about 87.3% Haskell by physical line count. This excludes upstream
+The engine's own source is 4,090 Haskell lines, 360 native-adapter lines and
+292 GLSL lines: about 86.3% Haskell by physical line count. This excludes upstream
 libraries, the vendored widget header, tests, sample game code, generated scenes
 and tooling. It describes engine ownership, not the implementation language of
 the graphics driver, solver or decoder dependencies.

@@ -5,6 +5,7 @@ import Unholy.Transform (resolveWorld)
 import Unholy.JSON
 import qualified Unholy.Renderer.GLTF as GLTF
 import qualified Unholy.Renderer.IBL as IBL
+import Unholy.Asset.CPU (loadTriangles)
 import qualified Data.IntMap.Strict as IM
 import qualified Data.Map.Strict as M
 import Control.Monad (forM, forM_, unless, when, foldM)
@@ -38,7 +39,7 @@ projectJSON p = Object
       ++ optional "authored" (Object . map (\(key,fields)->(key,Object [(k,fieldJSON value) | (k,value)<-M.toAscList fields])) . M.toAscList) (IM.lookup e (authored w))
       ++ optional "light" (\l -> Object [("color",vec (lightColor l)),("intensity",num (intensity l))]) (IM.lookup e (lights w))
       ++ optional "parent" (\p' -> Object [("entity",int (parentEntity p')),("local",trans (localTransform p'))]) (IM.lookup e (parents w))
-      ++ optional "body" (\b -> Object [("shape",String (if bodyShape b==Box then "box" else "sphere")),("mass",num (mass b)),("velocity",vec (velocity b)),("restitution",num (restitution b)),("friction",num (friction b)),("kinematic",Boolean (kinematic b)),("trigger",Boolean (trigger b)),("linearDamping",num (linearDamping b)),("angularDamping",num (angularDamping b))]) (IM.lookup e (bodies w))
+      ++ optional "body" (\b -> Object [("shape",String (shapeName (bodyShape b))),("mass",num (mass b)),("velocity",vec (velocity b)),("restitution",num (restitution b)),("friction",num (friction b)),("kinematic",Boolean (kinematic b)),("trigger",Boolean (trigger b)),("linearDamping",num (linearDamping b)),("angularDamping",num (angularDamping b)),("lockRotation",Boolean (lockRotation b))]) (IM.lookup e (bodies w))
     optional k f = maybe [] (\v -> [(k,f v)])
     trans t = Object [("position",vec (position t)),("rotation",vec (rotation t)),("scale",vec (scale t))]
     mat m = Object [("albedo",vec (albedo m)),("metallic",num (metallic m)),("roughness",num (roughness m)),("emission",num (emission m))]
@@ -115,11 +116,12 @@ decodeProject input = do
         Parent owner <$> (Transform <$> vfield "position" tr' <*> vfield "rotation" tr' <*> vfield "scale" tr'))
       body <- optional "body" (\o -> do
         shape<-field "shape" o >>= string
-        sh<-case shape of "box"->Right Box; "sphere"->Right Sphere; _->Left "Unknown physics shape"
+        sh<-maybe (Left "Unknown physics shape") Right (lookup shape [(shapeName value,value) | value<-[minBound..maxBound]])
         Body sh <$> floatField "mass" o <*> vfield "velocity" o <*> floatField "restitution" o <*> floatField "friction" o <*> pure False <*> optionalField "kinematic" (field "kinematic" o >>= boolean) False o
           <*> optionalField "trigger" (field "trigger" o >>= boolean) False o
           <*> optionalField "linearDamping" (floatField "linearDamping" o) 0.04 o
-          <*> optionalField "angularDamping" (floatField "angularDamping" o) 0.08 o)
+          <*> optionalField "angularDamping" (floatField "angularDamping" o) 0.08 o
+          <*> optionalField "lockRotation" (field "lockRotation" o >>= boolean) False o)
       let put v table = maybe table (\x -> IM.insert e x table) v
       pure w {names=IM.insert e n (names w),transforms=IM.insert e tr (transforms w),meshes=put m (meshes w),materials=put mat (materials w),scripts=put script (scripts w),lights=put light (lights w),bodies=put body (bodies w),parents=put parent (parents w),authored=put gameData (authored w)}
 
@@ -141,7 +143,7 @@ assetPath p
   | otherwise = Right ()
 
 builtins :: [String]
-builtins = ["cube","sphere","plane","cylinder","torus"]
+builtins = ["cube","sphere","plane","cylinder","torus","capsule"]
 
 assetReferences :: World -> [FilePath]
 assetReferences w = nub (IM.elems (scripts w) ++ [geometry m | m<-IM.elems (meshes w), geometry m `notElem` builtins] ++ [texture m | m<-IM.elems (meshes w),not (null (texture m))])
@@ -172,10 +174,15 @@ checkAssets root p = do
       let path=environmentMap (environment p)
       decoded<-try (IBL.loadHDR (root </> path))
       pure (case decoded of Right _->[];Left err->["Environment "++path++": "++show (err::IOException)])
+    colliders<-fmap concat $ forM (IM.toList (bodies (world p))) $ \(e,body)->
+      if bodyShape body `notElem` [Convex,TriangleMesh] then pure [] else do
+        let path=geometry (meshes (world p) IM.! e)
+        decoded<-try (loadTriangles (if path `elem` builtins then path else root </> path))
+        pure (case decoded of Right _->[];Left err->["Collider "++show e++" / "++path++": "++show (err::IOException)])
     discovered<-try (expandedAssetReferences root (world p))
     case discovered of
-      Left err->pure (hdr++[show (err::IOException)])
-      Right refs->(hdr++) <$> checkAssetFiles root (refs++projectAssetReferences p)
+      Left err->pure (hdr++colliders++[show (err::IOException)])
+      Right refs->((hdr++colliders)++) <$> checkAssetFiles root (refs++projectAssetReferences p)
 
 expandedAssetReferences :: FilePath -> World -> IO [FilePath]
 expandedAssetReferences root w=fmap (nub . concat) $ forM (assetReferences w) $ \ref->do

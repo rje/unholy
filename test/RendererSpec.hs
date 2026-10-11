@@ -1,5 +1,7 @@
 module Main where
 
+import PhysicsSpec (nodeFixture)
+import Unholy.Asset.CPU (loadTriangles)
 import qualified Unholy.Input as I
 import qualified Data.IntSet as S
 import qualified Unholy.Audio as Audio
@@ -21,7 +23,7 @@ import Graphics.GL
 import Data.IORef
 import Foreign
 import Control.Monad (unless, forM_, replicateM_)
-import Control.Exception (try, IOException)
+import Control.Exception (try, IOException, bracket)
 import Control.Concurrent (runInBoundThread, forkIO, newEmptyMVar, putMVar, takeMVar)
 import System.Directory (createDirectoryIfMissing, makeAbsolute)
 
@@ -85,6 +87,7 @@ checks window r = do
   assert "Clearing text focus must restore shortcuts" released
   writeIORef (N.uiState window) originalUI
   pass "Haskell text focus, persistent edit buffers and shortcut suppression"
+  controllerReplay window
   Audio.play (N.audio window) "projects/marble-run/assets/audio/ambience.wav" 0.15 1 True
   Audio.play (N.audio window) "projects/marble-run/assets/audio/jump.wav" 0.25 1 False
   Audio.play (N.audio window) "projects/marble-run/assets/audio/jump.wav" 0.25 1.2 False
@@ -165,6 +168,7 @@ checks window r = do
     forM_ importedTextures $ \tex -> glIsTexture tex >>= assert "imported texture leaked" . (==GL_FALSE)
   pass "imported material textures are copied, retained and released by Haskell"
   importedMaterials window r rect
+  colliderImportAlignment
 
   result<-newEmptyMVar
   _<-forkIO $ do
@@ -426,3 +430,38 @@ environmentLighting window r rect=do
   render window fixture rect False
   pixelAtCenter r >>= assert "Gradient/ambient fallback broke" . (\pixel->pixel!!0>pixel!!2+30)
   pass "float HDR, normalized irradiance, GGX roughness/orientation, rotating sky/reflections, cached uniforms and environment lifetime"
+
+colliderImportAlignment :: IO ()
+colliderImportAlignment=G.preservingState $ \_->do
+  (root,_)<-nodeFixture
+  cpu<-loadTriangles (root++"/nodes.gltf")
+  bracket (A.loadModel (root++"/nodes.gltf")) A.deleteModel $ \model->do
+    let ray=C.Ray (L.V3 3 8 (2/3)) (L.V3 0 (-1) 0)
+        expected=C.rayMesh ray (C.boundsOf cpu) cpu VS.empty
+        hits=[distance | mesh<-A.modelMeshes model,Just distance<-[C.rayMesh (C.objectRay (A.importTransform model) ray) (A.meshBounds mesh) (A.meshPositions mesh) (A.meshIndices mesh)]]
+    assert ("CPU collision nodes disagree with renderer geometry: "++show (expected,hits)) (not (null hits) && maybe False (\distance->abs (minimum hits-distance)<0.001) expected)
+  pass "CPU-only collider import agrees with renderer's transformed multi-node glTF geometry"
+
+controllerReplay :: N.Window -> IO ()
+controllerReplay window=do
+  createDirectoryIfMissing True "test-output"
+  let path="test-output/controller.rae"
+  writeFile path "c 7\ne 0 9 0 0 0 0\ne 0 13 0 0 16384 0\ne 0 12 0 7 0 0\ne 1 9 0 0 0 0\ne 1 13 0 0 16384 0\ne 1 12 0 7 0 0\ne 2 10 0 0 0 0\n"
+  original<-readIORef (N.uiState window)
+  N.loadReplay window path >>= assert "Controller replay did not load"
+  _<-N.frameTime window
+  first<-N.input window
+  assert ("Native controller snapshot/mapping failed: "++show first) (abs (I.moveX first-(0.5-0.18)/0.82)<0.001 && I.jump first)
+  focused<-readIORef (N.uiState window)
+  writeIORef (N.uiState window) focused {N.focusedText=Just (42,"editing")}
+  N.input window >>= assert "Native controller controls escaped text focus" . (==I.Input 0 0 False False False)
+  N.clearFocus window
+  _<-N.frameTime window
+  second<-N.input window
+  assert "Held controller button was treated as one-frame press" (I.jump second)
+  _<-N.frameTime window
+  disconnected<-N.input window
+  assert "Native disconnect retained controller movement/buttons" (disconnected==I.Input 0 0 False False False)
+  finished<-readIORef (N.uiState window)
+  writeIORef (N.uiState window) original {N.replay=N.replay finished}
+  pass "native replayed controller snapshot, analog mapping, held buttons, focus and disconnect"

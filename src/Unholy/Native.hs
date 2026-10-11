@@ -31,6 +31,7 @@ data Replay = Replay (Ptr ()) Int Int Int -- handle, count, index, frame
 foreign import ccall unsafe "hj_init" cInit :: CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CUInt -> IO CInt
 foreign import ccall unsafe "hj_close" cClose :: IO ()
 foreign import ccall unsafe "hj_should_close" cShouldClose :: IO CInt
+foreign import ccall unsafe "hj_gamepad" cGamepad :: Ptr CInt -> Ptr CFloat -> IO ()
 foreign import ccall unsafe "hj_width" cWidth :: IO CInt
 foreign import ccall unsafe "hj_height" cHeight :: IO CInt
 foreign import ccall unsafe "hj_dt" cDt :: IO CFloat
@@ -97,6 +98,11 @@ frameTime w=do
   checkWindow w
   state<-readIORef (uiState w)
   nextReplay<-traverse advanceReplay (replay state)
+  pad<-allocaArray 19 $ \buttons->allocaArray 2 $ \axes->do
+    cGamepad buttons axes
+    values<-peekArray 19 buttons
+    [sx,sy]<-map realToFrac <$> peekArray 2 axes
+    pure (I.Gamepad (head values/=0) sx sy (S.fromList [i | (i,down)<-zip [0..] (drop 1 values),down/=0]))
   snapshot<-allocaArray 512 $ \down -> allocaArray 512 $ \pressed -> allocaArray 13 $ \raw -> do
     cInput down pressed raw
     ds<-peekArray 512 down;ps<-peekArray 512 pressed;v<-peekArray 13 raw
@@ -105,7 +111,7 @@ frameTime w=do
         let click=any (/=0) [left,platformPress,tap]
             release=any (/=0) [released,platformRelease]
         cWidgetInput pressed (b click) (b release)
-        pure (I.FrameInput (S.fromList [i | (i,d)<-zip [0..] ds,d/=0]) (S.fromList [i | (i,p)<-zip [0..] ps,p/=0]) (Mouse x y dx dy wheelValue (right/=0) (middle/=0) click True) (held/=0) release)
+        pure (I.FrameInput (S.fromList [i | (i,d)<-zip [0..] ds,d/=0]) (S.fromList [i | (i,p)<-zip [0..] ps,p/=0]) (Mouse x y dx dy wheelValue (right/=0) (middle/=0) click True) (held/=0) release pad)
       _->ioError (userError "Invalid native input snapshot")
   writeIORef (uiState w) state {frameInput=snapshot,replay=nextReplay}
   mute<-key w 77 True

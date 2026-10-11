@@ -3,7 +3,7 @@
 A small native Haskell 3D engine with a Unity-inspired editor, PBR materials and HDR environment lighting,
 Lua scripting, a typed ECS, Bullet physics, and load/save/build/play projects.
 Named in honor of the original game jam. This is an experimental engine,
-with six playable/inspectable projects and a small native desktop editor.
+with seven playable/inspectable projects and a small native desktop editor.
 
 ## Run on macOS
 
@@ -16,7 +16,7 @@ open build/Unholy.app
 
 Or use `make run` / `./build/unholy`. The default project is **Material Lab**.
 Click **Load** to select a project, then **Play**. **More projects** pages through
-the samples, including Circuit Breaker and Material Gallery.
+the samples, including Circuit Breaker, Material Gallery and Threshold.
 
 ```sh
 ./build/unholy projects/marble-run/project.hj.json
@@ -40,9 +40,9 @@ packages and exports. Linux desktop graphics and audio remain unqualified.
 - **Hierarchy**: select entities; **+ Add** creates primitives, empty entities or
   point lights. The inspector supports rename, duplicate and delete.
 - **Inspector**: edit position, Euler rotation, scale, mesh and albedo texture
-  paths, material color/metallic/roughness/emission, Lua scripts, Bullet box or
-  sphere bodies, mass/friction/restitution, and point lights. Scroll for the
-  lower components. Bodies support triggers and linear/angular damping. Set or
+  paths, material color/metallic/roughness/emission, Lua scripts, Bullet box,
+  sphere, capsule, convex-hull or static triangle-mesh bodies, mass/friction/restitution, and point lights. Scroll for the
+  lower components. Bodies support triggers, upright rotation locking and linear/angular damping. Set or
   clear a parent entity ID at the bottom; children retain their world pose.
   Duplicate/Delete operate on the whole selected assembly. Numeric fields support ordinary keyboard editing. Set a
   body to **kinematic** for Lua-driven moving platforms and obstacles.
@@ -52,7 +52,7 @@ packages and exports. Linux desktop graphics and audio remain unqualified.
   the ground plane (Esc cancels). **Save prefab** in the inspector saves the
   selected entity and its descendants as a reusable project asset. Click a `.hdr` asset to set the project environment. Other asset
   types attach to the selected entity. Mesh paths are project
-  relative; built-ins are `cube`, `sphere`, `plane`, `cylinder` and `torus`.
+  relative; built-ins are `cube`, `sphere`, `plane`, `cylinder`, `torus` and `capsule`.
 - **World / Camera**: edit the sun, ambient intensity, exposure, sky colors,
   atmospheric fog, sun shadows, HDR environment path/intensity/rotation and game camera;
   copy the editor camera to the project, edit gravity and toggle the grid.
@@ -83,13 +83,18 @@ during play. Restart play after modifying a Lua source file to reload it.
 | Project | What to do | Systems shown |
 | --- | --- | --- |
 | Material Lab | Inspect the two rows of spheres and animated ring | GGX metal/roughness, point lights, emissive materials, Lua animation |
-| Material Gallery | Inspect six sculpted reliquaries | Static glTF submesh material slots, float factors, sRGB color textures, packed metallic/roughness source, normal maps, explicit entity overrides |
+| Material Gallery | Inspect six sculpted reliquaries | Static glTF submesh material slots, float factors, sRGB color textures, packed metallic/roughness source, normal maps, explicit entity overrides, HDR environment lighting |
 | Marble Run / Aether Gardens | Follow the blue lights, jump the gap, reach the checkpoint, cross the sliding bridge to the gold arch; ride the left lift to the bonus balcony | Textured beveled decks and suspended gardens, sun shadows/fog, kinematic platforms and rotating sweeper, parented platform assemblies, trigger checkpoints/finish, collectible gem prefabs, runtime crate spawning/destruction, collision sounds and ambience, win/restart |
 | Pulse Courier | Roll through three orange relay cores and deliver to the green portal; E dashes | Independently packaged Haskell game, typed custom components and systems, trigger scoring, Haskell camera/audio, kinematic shuttles, all Haskell primitive geometry |
 | Circuit Breaker | Roll onto blue pads, press E to open linked doors, reach the green portal | Persistent typed Haskell configuration, Game inspector, remapped entity links, prefab assemblies, Bullet triggers and moving doors |
+| Threshold | Collect three beacons, push through a block, climb the causeway, jump the raised threshold and reach the cyan arch | Haskell capsule controller, upright lock, convex collision, CPU-only glTF triangle colliders, kinematic shuttle, default gamepad input, HDR lighting, completion/reset |
 | Knockdown | Ram all eight orange towers with the steel ball | Dynamic box/sphere collisions, rolling and toppling, Lua scoring, material changes, win/restart |
 
 All games use **WASD/arrows**, **Space** to jump/hop, and **R** to restart.
+A controller's left stick also moves; A/Cross jumps, X/Square acts and Start
+restarts. Default controller mapping is implemented in Haskell with a radial
+dead zone, per-axis keyboard/stick clamping, held buttons and focus suppression.
+Controller replay is tested; a physical controller has not been tested here.
 The marble game's platform edges and its gap are intentional hazards.
 **E** drops a physics crate in Marble Run. Collect all five gems, including the
 one on the bonus balcony; finishing does not require all gems. **M** toggles sound. Marble Run includes wind, quiet ambient bells, rolling,
@@ -223,6 +228,9 @@ tables they need. Small scalar FFI adapters call established native libraries:
   The renderer retains values above one and owns the lighting precomputation.
 - [raygui](https://github.com/raysan5/raygui): editor widgets, with a charcoal and
   blue theme. A pinned header and its license live in `native/vendor/`.
+- [cgltf](https://github.com/jkuhlmann/cgltf): pinned CPU-only glTF/GLB
+  accessor decoding for mesh colliders, including source node world transforms.
+  Haskell retains arrays and makes collider/replacement decisions.
 - [HsLua](https://hackage.haskell.org/package/hslua-core): protected Haskell
   callbacks and bundled Lua 5.4.8 for per-entity script instances. Cabal builds
   this matching interpreter; a system Lua installation is unnecessary.
@@ -306,9 +314,16 @@ path; local probes, HDR EXR files and offline-quality baking are unsupported.
 Material Gallery includes an original generated studio environment.
 
 This version has **no skeletal animation or terrain**.
-Imported meshes are static; physics colliders are
-explicit box/sphere approximations, independent of mesh geometry. Nonuniform
-sphere scale uses the largest axis. Dynamic bodies must be assembly roots;
+Imported meshes are static. Physics reuses Bullet box/sphere/capsule, convex
+hull and static triangle-mesh shapes. A capsule has radius 0.5 and total height 2
+before uniform entity scaling; its editor primitive/outline matches. Convex and
+triangle colliders derive from the entity's mesh (built-ins or unskinned core
+glTF/GLB triangles), including node transforms. Triangle colliders must be fixed
+static bodies; moving geometry uses convex shapes or primitive colliders.
+Unsupported collider accessors, skins, morphs and required extensions fail
+headless Check/Play/Build. Mesh replacement is transactional: failure retains
+existing bodies and cleans up newly acquired handles. Nonuniform sphere scale
+uses the largest axis. Dynamic bodies must be assembly roots;
 children may be visual meshes or static/kinematic colliders. Parent transforms
 compose translation, quaternion rotation and scale; they do not represent shear
 from rotated children under nonuniformly scaled parents. Use uniform parent
@@ -327,15 +342,14 @@ The next targets follow these limits and the measured baseline:
    geometry take about 5.5 ms; these component timings do not establish game FPS.
 2. Environment-map IBL is now implemented and exercised in Material Gallery,
    with the existing sun/shadow path retained and editor/export parity checked.
-3. Extend a playable sample with the collider/input support it needs: reuse
-   Bullet's appropriate capsule, convex or static triangle-mesh shape and the
-   existing window backend's controller input. Authoring, bindings and resource
-   lifetime stay in Haskell.
+3. Collider/input support now has a playable checkpoint in Threshold: Bullet
+   capsule/convex/static triangle shapes and native controller snapshots, with
+   Haskell authoring, input policy and transactional resource lifetime.
 4. Add skeletal animation and terrain when a playable sample establishes their
    requirements.
 
-Items 1–2 now have working checkpoints; collider/input and animation/terrain
-remain the next implementation slices. Measurements and clean
+Items 1–3 now have working checkpoints; animation and terrain
+remain the next implementation slice. Measurements and clean
 public-package qualification are in [the current verification report](docs/haskell-verification.md).
 
 ## Verification tools

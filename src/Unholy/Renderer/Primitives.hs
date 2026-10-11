@@ -14,6 +14,7 @@ primitive name = pack <$> case name of
   "plane" -> Just (quad [(V3 (-0.5) 0 (-0.5),(0,0),up),(V3 (-0.5) 0 0.5,(0,1),up),(V3 0.5 0 0.5,(1,1),up),(V3 0.5 0 (-0.5),(1,0),up)])
   "sphere" -> Just (surface 32 32 sphere)
   "cylinder" -> Just (surface 32 1 cylinder ++ concat [cap y n i | (y,n)<-[(0,V3 0 (-1) 0),(1,up)],i<-[0..31::Int]])
+  "capsule" -> Just (surface 32 16 (capsuleCap True) ++ surface 32 16 (capsuleCap False) ++ surface 32 1 capsuleSide)
   "torus" -> Just (surface 32 24 torus)
   _ -> Nothing
   where
@@ -21,6 +22,9 @@ primitive name = pack <$> case name of
     face (n,u,v)=quad [(fmap (*0.5) (n+fmap (*a) u+fmap (*b) v),((a+1)/2,(1-b)/2),n) | (a,b)<-[(-1,-1),(1,-1),(1,1),(-1,1)]]
     sphere u v=let a=2*pi*u;b=pi*v;n=V3 (sin b*cos a) (cos b) (sin b*sin a) in (fmap (*0.5) n,(u,v),n)
     cylinder u v=let a=2*pi*u;n=V3 (cos a) 0 (sin a) in (V3 (0.5*cos a) v (0.5*sin a),(u,1-v),n)
+    capsuleCap upper u v=let a=2*pi*u;b=(if upper then v else 1+v)*pi/2;n=V3 (sin b*cos a) (cos b) (sin b*sin a);V3 x y z=fmap (*0.5) n
+                         in (V3 x (y+if upper then 0.5 else -0.5) z,(u,v),n)
+    capsuleSide u v=let a=2*pi*u;n=V3 (cos a) 0 (sin a) in (V3 (0.5*cos a) (v-0.5) (0.5*sin a),(u,v),n)
     -- Preserve the existing torus: XY ring, major radius .4, tube radius .08.
     torus u v=let a=2*pi*u;b=2*pi*v;r=0.4+0.08*cos b;n=V3 (cos b*cos a) (cos b*sin a) (sin b) in (V3 (r*cos a) (r*sin a) (0.08*sin b),(u,v),n)
     cap y n i=let a=2*pi*fromIntegral i/32;b=2*pi*fromIntegral (i+1)/32

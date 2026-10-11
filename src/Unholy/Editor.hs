@@ -393,7 +393,7 @@ entityInspector window x y s = case selected s of
         addBody<-N.button window x (y+850) 287 31 "Add box collider / static body" 0
         pure (if addBody then w2 {bodies=IM.insert e defaultBody (bodies w2)} else w2)
       Just body->do
-        shape<-N.button window x (y+850) 139 30 (if bodyShape body==Box then "Shape: box" else "Shape: sphere") 0
+        shape<-N.button window x (y+850) 139 30 ("Shape: "++shapeName (bodyShape body)) 0
         remove<-N.button window (x+147) (y+850) 140 30 "Remove body" 2
         N.text window x (y+895) 13 "MASS / 0 = STATIC" 1
         massText<-N.textbox window 24 (x+163) (y+887) 124 30 (show (mass body))
@@ -403,9 +403,14 @@ entityInspector window x y s = case selected s of
         sensor<-N.button window x (y+1051) 287 28 (if trigger body then "Collider: trigger / no response" else "Collider: solid") 0
         damping<-N.slider window x (y+1097) 287 "Linear damping" (linearDamping body) 0 1
         angular<-N.slider window x (y+1145) 287 "Angular damping" (angularDamping body) 0 1
-        let sensing=if sensor then not (trigger body) else trigger body
-            kin=if motion then not (kinematic body) else kinematic body
-        pure $ if remove then w2 {bodies=IM.delete e (bodies w2)} else w2 {bodies=IM.insert e (body {bodyShape=if shape then if bodyShape body==Box then Sphere else Box else bodyShape body,mass=if kin || sensing || IM.member e (parents w2) then 0 else max 0 (maybe (mass body) id (readFloat massText)),friction=friction',restitution=bounce,kinematic=kin,trigger=sensing,linearDamping=damping,angularDamping=angular}) (bodies w2)}
+        upright<-N.button window x (y+1180) 287 23 (if lockRotation body then "Rotation: locked / upright" else "Rotation: free") 0
+        let choices=drop 1 (dropWhile (/=bodyShape body) (cycle [minBound..maxBound]))
+            allowed candidate=let trial=body {bodyShape=candidate,mass=if candidate==TriangleMesh then 0 else mass body,kinematic=if candidate==TriangleMesh then False else kinematic body}
+                              in validateWorld w2 {bodies=IM.insert e trial (bodies w2)}==Right ()
+            nextShape=if shape then case filter allowed (take 5 choices) of value:_->value;_->bodyShape body else bodyShape body
+            sensing=if sensor then not (trigger body) else trigger body
+            kin=nextShape/=TriangleMesh && (if motion then not (kinematic body) else kinematic body)
+        pure $ if remove then w2 {bodies=IM.delete e (bodies w2)} else w2 {bodies=IM.insert e (body {bodyShape=nextShape,lockRotation=if upright then not (lockRotation body) else lockRotation body,mass=if nextShape==TriangleMesh || kin || sensing || IM.member e (parents w2) then 0 else max 0 (maybe (mass body) id (readFloat massText)),friction=friction',restitution=bounce,kinematic=kin,trigger=sensing,linearDamping=damping,angularDamping=angular}) (bodies w2)}
     N.text window x (y+1205) 13 "POINT LIGHT" 2
     w4<-case IM.lookup e (lights w3) of
       Nothing->do
@@ -571,7 +576,7 @@ drawModal window w h s = do
     Just AddEntity->do
       N.text window (x+24) (y+22) 22 "Add entity" 0
       chosen<-foldM (\choice (i,label)->do
-        click<-N.button window (x+24) (y+71+fromIntegral (i::Int)*42) 572 34 label 0
+        click<-N.button window (x+24) (y+71+fromIntegral (i::Int)*36) 572 34 label 0
         pure (if click then Just label else choice)) Nothing (zip [0..] (builtins++["empty","point light"]))
       cancel<-N.button window (x+470) (y+381) 126 31 "Cancel" 0
       case chosen of

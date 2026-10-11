@@ -29,7 +29,7 @@ data Renderer = Renderer
   , shadowTarget :: !Target, viewportTarget :: !(IORef (Maybe Target))
   , meshCache :: !(IORef (M.Map FilePath ModelData)), textureCache :: !(IORef (M.Map FilePath GLuint))
   , whiteTexture :: !GLuint, neutralMaps :: ![GLuint], screenBuffer :: !Buffer, gridBuffer :: !Buffer, boxBuffer :: !Buffer
-  , axisBuffers :: ![Buffer], lightBuffer :: !Buffer
+  , axisBuffers :: ![Buffer], lightBuffer :: !Buffer, capsuleBuffer :: !Buffer
   , orbitState :: !(IORef Orbit), activeCamera :: !(IORef Camera), rendererErrors :: !(IORef [String])
   , gizmoMode :: !(IORef (Maybe Gizmo.Mode)), gizmoDrag :: !(IORef (Maybe Gizmo.Drag)), gizmoEdit :: !(IORef (Maybe Gizmo.Edit)), ringBuffers :: ![Buffer]
   , instanceBuffer :: !GLuint, poseCache :: !(IORef (IM.IntMap CachedPose))
@@ -57,6 +57,7 @@ initialize root = preservingState $ \_ ->
   bracketOnError (lineBuffer boxVertices) deleteBuffer $ \boxBuffer ->
   bracketOnError (loadBuffers [[L.V3 0 0 0,p] | p<-[L.V3 1 0 0,L.V3 0 1 0,L.V3 0 0 1]]) (mapM_ deleteBuffer) $ \axisBuffers ->
   bracketOnError (lineBuffer lightVertices) deleteBuffer $ \lightBuffer ->
+  bracketOnError (lineBuffer capsuleVertices) deleteBuffer $ \capsuleBuffer ->
   bracketOnError (loadBuffers [concat (zipWith (\a b->[a,b]) points (drop 1 points)) | axis<-[0..2],let points=Gizmo.ringPoints axis]) (mapM_ deleteBuffer) $ \ringBuffers ->
   bracketOnError (genObject glGenBuffers) (deleteObject glDeleteBuffers) $ \instanceBuffer -> do
     gizmoMode<-newIORef Nothing
@@ -101,6 +102,12 @@ lightVertices = concat [[point axis t,point axis (t+step)] | axis<-[0..2::Int],i
         point 1 t=L.V3 (cos t) 0 (sin t)
         point _ t=L.V3 (cos t) (sin t) 0
 
+capsuleVertices :: [L.V3 Float]
+capsuleVertices=concat [concat (zipWith (\a b->[a,b]) points (drop 1 points)) | plane<-[False,True],let points=outline plane]
+  where outline plane=map (point plane) ([(cos a/2,0.5+sin a/2) | i<-[0..32::Int],let a=pi*fromIntegral i/32]++[(cos a/2,-0.5+sin a/2) | i<-[32..64::Int],let a=pi*fromIntegral i/32]++[(0.5,0.5)])
+        point False (x,y)=L.V3 x y 0
+        point True (z,y)=L.V3 0 y z
+
 unloadAssets :: Renderer -> IO ()
 unloadAssets Renderer{..} = do
   flushUI
@@ -120,7 +127,7 @@ close r@Renderer{..} = do
     writeIORef viewportTarget Nothing
     deleteTarget shadowTarget
     mapM_ (glDeleteProgram . programId) [pbrProgram,shadowProgram,screenProgram,lineProgram,iblProgram]
-    mapM_ deleteBuffer ([screenBuffer,gridBuffer,boxBuffer,lightBuffer]++axisBuffers++ringBuffers)
+    mapM_ deleteBuffer ([screenBuffer,gridBuffer,boxBuffer,lightBuffer,capsuleBuffer]++axisBuffers++ringBuffers)
     deleteObject glDeleteTextures whiteTexture
     deleteObject glDeleteBuffers instanceBuffer
 focus :: Renderer -> V3 -> IO ()
@@ -385,7 +392,11 @@ drawOverlays r vp w draws grid selected = do
     let color=if trigger body then L.V3 1 0.7 0.2 else accent
         size=if bodyShape body==Sphere then let radius=maximum (vlist (scale pose))/2 in L.V3 radius radius radius else toLinear (scale pose)
         matrix=L.mkTransformation (rotationQ (rotation pose)) (toLinear (position pose)) L.!*! L.scaled (let L.V3 a b c=size in L.V4 a b c 1)
-    line color matrix (if bodyShape body==Sphere then lightBuffer r else boxBuffer r)
+    case bodyShape body of
+      Sphere->line color matrix (lightBuffer r)
+      Capsule->line color matrix (capsuleBuffer r)
+      Box->line color matrix (boxBuffer r)
+      _->pure () -- The selected mesh bounds above show imported collider extent.
   forM_ (IM.toAscList (lights w)) $ \(e,_) -> forM_ (IM.lookup e (transforms w)) $ \t -> do
     let radius=if Just e==selected then 0.2 else 0.12
     line (if Just e==selected then accent else L.V3 1 0.84 0.52) (trs (toLinear (position t)) (L.V3 radius radius radius)) (lightBuffer r)
