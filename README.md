@@ -87,6 +87,7 @@ during play. Restart play after modifying a Lua source file to reload it.
 | --- | --- | --- |
 | Material Lab | Inspect the two rows of spheres and animated ring | GGX metal/roughness, point lights, emissive materials, Lua animation |
 | Material Gallery | Inspect six sculpted reliquaries | Static glTF submesh material slots, float factors, sRGB color textures, packed metallic/roughness source, normal maps, explicit entity overrides, HDR environment lighting |
+| [Animation Lab](projects/animation-lab/README.md) | Compare Survey/Walk/Run, change clips in the inspector and inspect the gold head tag | Conventional textured Fox import, 22 independent GPU poses, shared bind geometry, rigid joint attachments and animated shadows |
 | [Feature Courtyard](projects/feature-courtyard/README.md) | Compare four animated travelers, edit terrain and inspect the roughness row / column grove | Independent animation phases and paused pose, HDR reflections, finite terrain/heightfield, 128 instanced columns, Lua sculpture |
 | Marble Run / Aether Gardens | Follow the blue lights, jump the gap, reach the checkpoint, cross the sliding bridge to the gold arch; ride the left lift to the bonus balcony | Textured beveled decks and suspended gardens, sun shadows/fog, kinematic platforms and rotating sweeper, parented platform assemblies, trigger checkpoints/finish, collectible gem prefabs, runtime crate spawning/destruction, collision sounds and ambience, win/restart |
 | Pulse Courier | Roll through three orange relay cores and deliver to the green portal; E dashes | Independently packaged Haskell game, typed custom components and systems, trigger scoring, Haskell camera/audio, kinematic shuttles, all Haskell primitive geometry |
@@ -228,20 +229,21 @@ tables they need. Small scalar FFI adapters call established native libraries:
   composition passes. GPU shaders remain GLSL.
 - [linear](https://hackage.haskell.org/package/linear): Haskell vector/matrix
   math for transforms, cameras, normal matrices and triangle picking.
-- [raylib](https://github.com/raysan5/raylib): window/input, static mesh and image
-  importing, audio decoding/mixing/playback, and the editor's 2D UI backend.
-  Its model importer creates temporary native GPU data; Haskell copies the CPU
-  geometry and supported imported material textures, then immediately releases the native
-  model. All retained 3D resources and draw calls belong to the Haskell renderer.
+- [raylib](https://github.com/raysan5/raylib): window/input, image decoding,
+  audio decoding/mixing/playback and the editor's 2D UI backend. OBJ/IQM still
+  use its legacy model adapter. glTF/GLB use the CPU-only cgltf path below,
+  without temporary raylib model textures or GPU readback. All retained 3D
+  resources and draw calls belong to the Haskell renderer.
 - [stb_image](https://github.com/nothings/stb): pinned, CPU-only floating-point
   Radiance HDR decoding independent of raylib build-time image format switches.
   The renderer retains values above one and owns the lighting precomputation.
 - [raygui](https://github.com/raysan5/raygui): editor widgets, with a charcoal and
   blue theme. A pinned header and its license live in `native/vendor/`.
 - [cgltf](https://github.com/jkuhlmann/cgltf): pinned CPU-only glTF/GLB
-  accessor decoding for mesh colliders and animation. Haskell retains arrays,
-  bakes collider node transforms, evaluates skeletal poses and makes resource
-  replacement decisions.
+  accessor and embedded-buffer decoding. One validated Haskell asset describes
+  the selected scene, geometry, materials, images and skins for drawing,
+  animation, picking and mesh colliders. Haskell evaluates skeletal poses,
+  manages GPU palettes and makes resource replacement decisions.
 - [HsLua](https://hackage.haskell.org/package/hslua-core): protected Haskell
   callbacks and bundled Lua 5.4.8 for per-entity script instances. Cabal builds
   this matching interpreter; a system Lua installation is unnecessary.
@@ -300,13 +302,14 @@ Imported slots. Entity override applies one material's factors to all submeshes
 and disables imported normal/data/emissive maps; a blank albedo path still uses
 the imported base texture. An explicit albedo path overrides that texture.
 
-The supported import subset is opaque, single-sided static triangles, UV0, no
+The supported material subset is opaque, single-sided triangles, UV0, no
 vertex colors or material extensions, repeat wrapping and linear mipmap filtering.
 Unsupported imported-material features fail check/Play/build with a diagnostic;
 an entity override can still use their static geometry. glTF buffers and images
 are included in checks and exports, including models outside `assets/`. External
-URIs must be local paths without parent traversal or URL escaping. Raylib visits
-all file nodes, so multi-scene selection is not supported. OBJ/IQM retain the
+URIs must be local paths without parent traversal or URL escaping. Embedded
+GLB and base64 data-URI PNG/JPEG images are supported. Geometry respects the
+selected default scene and keeps complete joint ancestry. OBJ/IQM retain the
 earlier static import path. Imported factors follow the
 [glTF material specification](https://github.com/KhronosGroup/glTF/blob/main/specification/2.0/Specification.adoc#metallic-roughness-material).
 
@@ -325,18 +328,32 @@ path; local probes, HDR EXR files and offline-quality baking are unsupported.
 Material Gallery includes an original generated studio environment.
 
 Skeletal animation uses a first-class `Animator` store: clip, time, rate, loop and
-pause. Haskell evaluates the complete node hierarchy, inverse-bind palettes and
-four-weight CPU skinning; drawing, shadows, bounds and picking use one prepared
-pose. Threshold's original traveler has idle/walk/jump clips. The inspector edits
-saved poses/configuration, and Play/Stop keep runtime time separate. Core glTF/GLB
-skins require triangle geometry with POSITION/NORMAL/UV0/JOINTS0/WEIGHTS0, at most
-65,535 vertices per primitive and 512 nodes, nonsparse base geometry views, float
-position/normal/UV/weights and unsigned byte/short joints. LINEAR and STEP tracks
-support translation, rotation and positive scale. Mixed rigid/skinned primitives,
-extra attributes (including tangents), morphs, cubic tracks, animation blending,
-root motion and GPU skinning are unsupported. CPU skinning targets modest rigs;
-this checkpoint makes no crowd-performance claim. Static imports retain their
-existing material policy.
+pause. Haskell samples clips, evaluates the complete hierarchy once per pose and
+builds position/normal palettes. Shared immutable bind meshes deform on the GPU
+in both PBR and shadow passes. Each character owns its palette; static batching
+remains available. Conservative per-joint influence bounds drive culling. Exact
+CPU deformation runs on demand for triangle picking or reference checks, never
+as the ordinary animated draw path.
+
+[Animation Lab](projects/animation-lab/README.md) imports the licensed Khronos Fox
+with Survey/Walk/Run, 22 independent poses and a rigid head attachment. Threshold
+retains its original idle/walk/jump traveler. The inspector lists available clips,
+cycles them with **Next clip**, and edits saved time/rate/loop/pause. Play/Stop
+keep runtime state separate from the authored configuration.
+
+The bounded glTF/GLB geometry subset supports triangles, optional normals/UV0,
+normalized integer UVs and weights, sparse and implicit-zero accessors, unsigned
+byte/short joint indices, and mixed rigid/skinned mesh nodes. Missing normals
+expand triangle corners for flat shading; the resulting primitive must fit
+65,535 vertices. Rigs have at most 512 nodes and 512 joints per skin; palettes
+also respect the device texture-buffer capacity. Tangents are accepted; PBR uses
+its existing derivative tangent basis. LINEAR/STEP tracks support translation,
+rotation and positive scale. Vertex colors, additional UV sets, more than four
+influences, negative scales, required extensions, morphs, cubic tracks, blending
+and root motion remain unsupported. Use primitive gameplay colliders for animated
+characters. The [verification report](docs/haskell-verification.md) separates
+component measurements from moving-scene draw timings; this is a bounded demo,
+not a large-crowd scalability claim.
 
 Finite terrain uses a persisted `Terrain` height grid and a Haskell-generated
 mesh with normals, repeating UVs, bounds and triangle picking. Bullet's static
@@ -385,7 +402,7 @@ The four development targets now have checkpoints against these limits:
    and actual editor authoring/export checks.
 
 All four targets have working checkpoints within the limits above. Animation
-blending/GPU skinning, terrain brushes/LOD/streaming, richer asset import and
+blending, terrain brushes/LOD/streaming, richer asset import and
 broader desktop platform qualification remain future work. Measurements and clean
 public-package qualification are in [the current verification report](docs/haskell-verification.md).
 
@@ -393,17 +410,10 @@ The [Astra Haskell review](docs/haskell-review.md) records the current code
 assessment, a reproduced audio failure-path bug and the import/GPU prerequisites.
 The next priorities are:
 
-1. Conventional mesh import and GPU skeletal deformation. Consolidate the
-   existing cgltf-backed geometry/accessor path so mesh instances, skins and
-   materials have one validated ordering before GPU allocation. Qualify a
-   licensed character from a conventional glTF exporter and expose available
-   clips in the inspector. Haskell keeps clip sampling, hierarchy evaluation,
-   joint palettes and resource ownership; the material and shadow vertex shaders
-   deform shared bind-pose geometry. Use conservative animated bounds and
-   on-demand CPU picking, without full per-frame CPU skinning/vertex uploads.
-   Demonstrate independent characters in a checked-in project and verify the
-   editor and relocated export. This is planned work; the current draw path
-   still uses CPU skinning.
+1. Conventional mesh import and GPU skeletal deformation now have an
+   [Animation Lab checkpoint](projects/animation-lab/README.md): unified validated
+   assets, licensed character import, independent GPU poses and animated shadows.
+   See the verification report for editor/export evidence and measured limits.
 2. Finish viewport authoring: place prefabs on picked surfaces and add a bounded
    terrain height brush with one undo entry per drag. Qualify a route assembled,
    sculpted, saved and played through the editor/export workflow.
@@ -455,6 +465,13 @@ movement and a window resize, captures screenshots and closes the window.
 the real app through a gizmo drag and one undo/redo, saves a prefab, places its
 assembly, saves the project, and checks the resulting scene files. Its captures
 go to `build/verification/unholy-runtime/`.
+`scripts/verify-demos.py animation-lab` exercises the new demo's real
+Load/Play/Stop/Build and relocated player. `scripts/verify-animation-lab.py`
+checks imported clip selection, paused poses and save/reopen. Captures go to
+`build/verification/demos/animation-lab/` and `animation-lab-authoring/`.
+`cabal run unholy-bench -- --animation +RTS -T` measures pose components and a
+warm moving scene; the report explains what those timings establish.
+
 `scripts/verify-animation.py`, `scripts/verify-terrain.py` and
 `scripts/verify-threshold.py` exercise pose/terrain authoring and the playable
 route in the real editor and relocated exported player. Their captures live

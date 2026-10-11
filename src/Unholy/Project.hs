@@ -276,7 +276,7 @@ buildProjectWithAssets extra root engineAssets p = ioEither $ do
     createDirectoryIfMissing True (takeDirectory (staging </> ref))
     copyFile (root </> ref) (staging </> ref)
   copyTree (engineAssets </> "shaders") (staging </> "engine" </> "shaders")
-  forM_ ["pbr.vs","pbr.fs","depth.vs","depth.fs","screen.vs","screen.fs","line.vs","line.fs","ibl.fs"] $ \shader -> do
+  forM_ ["pbr.vs","pbr.fs","depth.vs","depth.fs","skinning.vs","screen.vs","screen.fs","line.vs","line.fs","ibl.fs"] $ \shader -> do
     shaderExists<-doesFileExist (staging </> "engine" </> "shaders" </> shader)
     unless shaderExists (ioError (userError ("Missing engine shader: "++shader)))
   writeFile (staging </> projectFile) (encodeJSON (projectJSON p)++"\n")

@@ -3,20 +3,28 @@ module Unholy.Renderer.Assets where
 
 import qualified Unholy.Renderer.Primitives as P
 import qualified Unholy.Renderer.GLTF as F
+import qualified Unholy.Asset.GLTF as Asset
+import qualified Unholy.Animation as Animation
+import Unholy.Types (defaultAnimator)
+import qualified Data.ByteString as B
+import System.FilePath (takeExtension)
+import Data.Char (toLower)
+import Data.List (nub)
+import qualified Data.Vector as V
 import Unholy.Renderer.GL
 import Unholy.Renderer.Camera (Bounds, boundsOf)
 import Graphics.GL
 import Foreign
 import Foreign.C
 import Control.Exception (bracket, onException,try,IOException)
-import Control.Monad (forM_, when, unless)
+import Control.Monad (when, unless)
 import qualified Data.Vector.Storable as VS
 import Linear.Matrix (identity)
 import Linear (M44, V3(..), V4(..), transpose)
 import qualified Data.IntMap.Strict as IM
 
 data ImportedMaterial = ImportedMaterial { materialInfo :: !F.MaterialInfo, materialTextures :: ![Maybe GLuint] }
-data MeshData = MeshData { meshBuffer :: !Buffer, meshPositions :: !(VS.Vector (V3 Float)), meshIndices :: !(VS.Vector Word16), meshBounds :: !Bounds, importedMaterial :: !(Maybe ImportedMaterial) }
+data MeshData = MeshData { meshBuffer :: !Buffer, meshPositions :: VS.Vector (V3 Float), meshIndices :: !(VS.Vector Word16), meshBounds :: !Bounds, importedMaterial :: !(Maybe ImportedMaterial), meshDeformation :: !(Maybe Palette) }
 importedTexture :: MeshData -> Maybe GLuint
 importedTexture mesh=importedMaterial mesh >>= textureSlot 0
 textureSlot :: Int -> ImportedMaterial -> Maybe GLuint
@@ -44,7 +52,11 @@ loadModelWith _ path | Just cpu<-P.primitive path = do
       positions=VS.generate (VS.length raw `div` 8) (\i -> V3 (raw VS.! (i*8)) (raw VS.! (i*8+1)) (raw VS.! (i*8+2)))
       bounds=boundsOf positions
   gpu<-uploadBuffer raw (P.indices cpu)
-  pure (ModelData [MeshData gpu positions (P.indices cpu) bounds Nothing] identity bounds Nothing)
+  pure (ModelData [MeshData gpu positions (P.indices cpu) bounds Nothing Nothing] identity bounds Nothing)
+loadModelWith animated path | map toLower (takeExtension path) `elem` [".gltf",".glb"] = do
+  rig<-Asset.loadAsset path
+  unless (animated || all ((==Nothing) . Asset.meshSkin) (Asset.rigMeshes rig)) (ioError (userError "Skinned assets require an Animator component"))
+  uploadRig animated rig
 loadModelWith animated path = withCString path $ \name -> bracket (cModel name) cFreeModel $ \p -> do
   when (p==nullPtr) (ioError (userError ("Cannot import mesh: "++path)))
   attempted<-try ((if animated then F.loadAnimatedMaterials else F.loadMaterials) path)
@@ -93,7 +105,7 @@ loadMesh model index info = allocaArray 2 $ \counts -> allocaArray 4 $ \arrays -
         else normals VS.! (v*3+component-5)
   gpu<-uploadBuffer vertices indices
   textures<-loadMaps [0..5] `onException` deleteBuffer gpu
-  pure (MeshData gpu positions indices (boundsOf positions) (Just (ImportedMaterial (maybe F.defaultInfo {F.metalFactor=0,F.roughFactor=0.4} id info) textures)))
+  pure (MeshData gpu positions indices (boundsOf positions) (Just (ImportedMaterial (maybe F.defaultInfo {F.metalFactor=0,F.roughFactor=0.4} id info) textures)) Nothing)
   where
     loadMaps []=pure []
     loadMaps (slot:rest)=do
@@ -114,7 +126,7 @@ copyVector n p = do
   withForeignPtr foreignPtr $ \out -> copyArray out p n
   pure (VS.unsafeFromForeignPtr0 foreignPtr n)
 deleteModel :: ModelData -> IO ()
-deleteModel model = forM_ (modelMeshes model) deleteMesh
+deleteModel model = mapM_ (deleteBuffer . meshBuffer) (modelMeshes model) >> mapM_ (deleteObject glDeleteTextures) (nub (concatMap meshTextures (modelMeshes model)))
 deleteMesh :: MeshData -> IO ()
 deleteMesh mesh = deleteBuffer (meshBuffer mesh) >> mapM_ (deleteObject glDeleteTextures) (meshTextures mesh)
 
@@ -124,3 +136,48 @@ loadTexture path = withCString path $ \name -> allocaArray 2 $ \size -> bracket 
   w<-fromIntegral <$> peekElemOff size 0
   h<-fromIntegral <$> peekElemOff size 1
   cPixels p >>= newTextureWithColorSpace True w h
+
+foreign import ccall unsafe "hj_asset_image_bytes" cImageBytes :: CString -> Ptr Word8 -> CInt -> Ptr CInt -> IO (Ptr ())
+
+-- All geometry/material identities come from the validated CPU asset. raylib
+-- only decodes images here; no temporary model/texture uploads or readback.
+uploadRig :: Bool -> Asset.Rig -> IO ModelData
+uploadRig animated rig=do
+  let references=Animation.posedMeshes rig defaultAnimator
+      rawMeshes=if animated then map Asset.bindVertices (Asset.rigMeshes rig) else references
+      loadAll []=pure []
+      loadAll ((source,raw):rest)=do
+        let positions=VS.generate (VS.length raw `div` 8) (\i->V3 (raw VS.! (i*8)) (raw VS.! (i*8+1)) (raw VS.! (i*8+2)))
+            indices=Asset.triangleIndices source
+            slot=maybe (-1) id (Asset.meshMaterial source)
+            info=IM.findWithDefault F.defaultInfo slot (Asset.rigMaterialInfos rig)
+            images=IM.findWithDefault (replicate 6 Nothing) slot (Asset.rigMaterialImages rig)
+        buffer<-(if animated then uploadSkinBuffer raw indices (Animation.paletteOffset rig source) (Asset.vertexJoints source) (Asset.vertexWeights source) else uploadBuffer raw indices)
+        maps<-loadMaps (zip [0..] images) `onException` deleteBuffer buffer
+        let mesh=MeshData buffer positions indices (boundsOf positions) (Just (ImportedMaterial info maps)) Nothing
+        following<-loadAll rest `onException` deleteMesh mesh
+        pure (mesh:following)
+      loadMaps []=pure []
+      loadMaps ((slot,index):rest)=do
+        image<-traverse (\i->loadImageSlot (Asset.rigImages rig V.! i) slot) index
+        following<-loadMaps rest `onException` mapM_ (deleteObject glDeleteTextures) image
+        pure (image:following)
+  meshes<-loadAll (zip (Asset.rigMeshes rig) rawMeshes)
+  let bounds=boundsOf (VS.fromList (concatMap (\mesh->let (lo,hi)=meshBounds mesh in [lo,hi]) meshes))
+  pure (ModelData meshes identity bounds (Asset.rigMaterialError rig))
+
+loadImageSlot :: Asset.Image -> Int -> IO GLuint
+loadImageSlot image slot=allocaArray 2 $ \size->
+  let acquire=case image of
+        Asset.ImageFile path->withCString path (\name->cImage name size)
+        Asset.ImageBytes extension bytes->withCString extension $ \name->B.useAsCStringLen bytes $ \(ptr,count)->cImageBytes name (castPtr ptr) (fromIntegral count) size
+  in bracket acquire cFreeImage $ \p->do
+    when (p==nullPtr) (ioError (userError "Cannot decode imported image"))
+    w<-fromIntegral <$> peekElemOff size 0;h<-fromIntegral <$> peekElemOff size 1
+    pixels<-cPixels p
+    if slot `elem` [2,3,5] then do
+      original<-copyVector (w*h*4) pixels
+      let channel=if slot==2 then 2 else if slot==3 then 1 else 0
+          scalar=VS.generate (w*h*4) (\i->if i `mod` 4==3 then 255 else original VS.! ((i `div` 4)*4+channel))
+      VS.unsafeWith scalar (newTextureWithColorSpace False w h)
+    else newTextureWithColorSpace (slot `elem` [0,4]) w h pixels

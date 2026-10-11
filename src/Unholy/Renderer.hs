@@ -21,7 +21,7 @@ import qualified Data.IntMap.Strict as IM
 import qualified Data.Vector.Storable as VS
 import Data.IORef
 import Foreign
-import Control.Exception (IOException, bracketOnError, onException, try)
+import Control.Exception (IOException, bracketOnError, onException, try, mask_)
 import Control.Monad (forM, forM_, when, unless)
 import System.FilePath ((</>))
 
@@ -42,6 +42,7 @@ data Renderer = Renderer
   , animatedInstances :: !(IORef (IM.IntMap (FilePath,Animator,ModelData)))
   , terrainInstances :: !(IORef (IM.IntMap (Terrain,ModelData)))
   , disposed :: !(IORef Bool)
+  , neutralPalette :: !Palette
   }
 data Draw = Draw { drawEntity :: !Entity, drawModel :: !ModelData, drawMatrix :: !(L.M44 Float), drawMaterial :: !Material, drawTexture :: !GLuint, drawImported :: !Bool }
 data CachedPose = CachedPose { cachedGeometry :: !FilePath, cachedModel :: !GLuint, cachedTransform :: !Transform, cachedMatrix :: !(L.M44 Float), cachedNormal :: !(L.M44 Float), cachedBounds :: !Bounds, cachedColumns :: ![L.M44 Float] }
@@ -65,6 +66,7 @@ initialize root = preservingState $ \_ ->
   bracketOnError (lineBuffer lightVertices) deleteBuffer $ \lightBuffer ->
   bracketOnError (lineBuffer capsuleVertices) deleteBuffer $ \capsuleBuffer ->
   bracketOnError (loadBuffers [concat (zipWith (\a b->[a,b]) points (drop 1 points)) | axis<-[0..2],let points=Gizmo.ringPoints axis]) (mapM_ deleteBuffer) $ \ringBuffers ->
+  bracketOnError (newPalette (VS.fromList [L.identity,L.identity])) deletePalette $ \neutralPalette ->
   bracketOnError (genObject glGenBuffers) (deleteObject glDeleteBuffers) $ \instanceBuffer -> do
     gizmoMode<-newIORef Nothing
     gizmoDrag<-newIORef Nothing
@@ -145,6 +147,7 @@ close r@Renderer{..} = do
     mapM_ deleteBuffer ([screenBuffer,gridBuffer,boxBuffer,lightBuffer,capsuleBuffer]++axisBuffers++ringBuffers)
     deleteObject glDeleteTextures whiteTexture
     deleteObject glDeleteBuffers instanceBuffer
+    deletePalette neutralPalette
 focus :: Renderer -> V3 -> IO ()
 focus r pos = modifyIORef' (orbitState r) (\o -> o {orbitTarget=toLinear pos,orbitDistance=7})
 getCamera :: Renderer -> IO Camera
@@ -172,7 +175,9 @@ getModelFor r importedPolicy path = do
 -- Instance buffers borrow source material textures. Only the immutable source
 -- owns those textures; removing a character deletes its mutable buffers alone.
 deleteAnimated :: ModelData -> IO ()
-deleteAnimated=mapM_ (deleteBuffer . meshBuffer) . modelMeshes
+deleteAnimated model=case modelMeshes model of
+  mesh:_->mapM_ deletePalette (meshDeformation mesh)
+  []->pure ()
 getTerrainModel :: Renderer -> Entity -> Terrain -> IO ModelData
 getTerrainModel r e terrain=do
   old<-IM.lookup e <$> readIORef (terrainInstances r)
@@ -184,7 +189,7 @@ getTerrainModel r e terrain=do
           positions=VS.generate (VS.length raw `div` 8) (\i->L.V3 (raw VS.! (i*8)) (raw VS.! (i*8+1)) (raw VS.! (i*8+2)))
           bounds=boundsOf positions
       buffer<-uploadBuffer raw (Primitive.indices cpu)
-      let model=ModelData [MeshData buffer positions (Primitive.indices cpu) bounds Nothing] L.identity bounds Nothing
+      let model=ModelData [MeshData buffer positions (Primitive.indices cpu) bounds Nothing Nothing] L.identity bounds Nothing
       mapM_ (deleteModel . snd) old
       modifyIORef' (terrainInstances r) (IM.insert e (terrain,model))
       pure model
@@ -196,7 +201,7 @@ getAnimatedModel r e path a=do
     Nothing->do
       attempt<-try $ do
         rig<-Animation.loadRig path
-        model<-loadModelWith True path
+        model<-uploadRig True rig
         (do unless (length (Animation.rigMeshes rig)==length (modelMeshes model)) (ioError (userError "Skin/import material primitive counts disagree"))
             forM_ (materialError model) (ioError . userError)
             pure (rig,model)) `onException` deleteModel model
@@ -213,31 +218,37 @@ getAnimatedModel r e path a=do
       old<-IM.lookup e <$> readIORef (animatedInstances r)
       case old of
         Just (prior,config,model) | prior==path && config==a->pure model
-        _->do
+        _->mask_ $ do
           safe<-case Animation.validateAnimator rig a of
             Right ()->pure a
             Left err->reportError r (userError err) >> pure a {animationClip=""}
-          let vertices=Animation.posedMeshes rig safe
-              reusable=case old of Just (prior,_,model) | prior==path->Just model;_->Nothing
-              create []=pure []
-              create ((raw,bind,material):rest)=do
-                buffer<-uploadBuffer raw (Animation.triangleIndices bind)
-                let mesh=makeMesh buffer raw (Animation.triangleIndices bind) (importedMaterial material)
-                following<-create rest `onException` deleteBuffer buffer
-                pure (mesh:following)
-          meshes'<-case reusable of
-            Nothing->create (zip3 vertices (Animation.rigMeshes rig) (modelMeshes original))
-            Just model->forM (zip vertices (modelMeshes model)) $ \(raw,mesh)->do
-              glBindBuffer GL_ARRAY_BUFFER (vertexBuffer (meshBuffer mesh))
-              VS.unsafeWith raw $ \p->glBufferSubData GL_ARRAY_BUFFER 0 (fromIntegral (VS.length raw*4)) (castPtr p)
-              pure (makeMesh (meshBuffer mesh) raw (meshIndices mesh) (importedMaterial mesh))
-          let model=ModelData meshes' L.identity (boundsOf (VS.fromList (concatMap (\m->let (lo,hi)=meshBounds m in [lo,hi]) meshes'))) Nothing
-          when (maybe True (const False) reusable) (mapM_ (\(_,_,m)->deleteAnimated m) old)
+          let matrices=Animation.posePalette rig safe
+              reusable=case old of
+                Just (prior,_,model) | prior==path->case modelMeshes model of
+                  mesh:_->meshDeformation mesh
+                  []->Nothing
+                _->Nothing
+          palette<-case reusable of
+            Just value->updatePalette value matrices >> pure value
+            Nothing->newPalette matrices
+          -- CPU positions remain lazy and are forced only by exact picking.
+          -- Bounds use joint influence boxes, independent of vertex count.
+          let meshes'=[material {meshPositions=Animation.posedPositions rig matrices bind
+                               ,meshBounds=Animation.posedBounds rig matrices bind
+                               ,meshDeformation=Just palette}
+                      | (bind,material)<-zip (Animation.rigMeshes rig) (modelMeshes original)]
+              model=ModelData meshes' L.identity (boundsOf (VS.fromList (concatMap (\m->let (lo,hi)=meshBounds m in [lo,hi]) meshes'))) Nothing
+          -- Acquire and publish under masking; release an uncommitted palette
+          -- on failure, then retire the previous instance after ownership moves.
+          let fresh=maybe True (const False) reusable
           modifyIORef' (animatedInstances r) (IM.insert e (path,a,model))
+            `onException` when fresh (deletePalette palette)
+          when fresh (mapM_ (\(_,_,m)->deleteAnimated m) old)
           pure model
-  where
-    makeMesh buffer raw indices material=let positions=VS.generate (VS.length raw `div` 8) (\i->L.V3 (raw VS.! (i*8)) (raw VS.! (i*8+1)) (raw VS.! (i*8+2)))
-      in MeshData buffer positions indices (boundsOf positions) material
+availableClips :: Renderer -> FilePath -> IO [String]
+availableClips r path=do
+  sources<-readIORef (animationSources r)
+  pure (case M.lookup path sources of Just (Just (rig,_))->M.keys (Animation.rigClips rig);_->[])
 getEnvironment :: Renderer -> FilePath -> IO (Maybe IBL.IBL)
 getEnvironment r path = do
   cached<-readIORef (environmentCache r)
@@ -330,10 +341,11 @@ drawScene r mouse down snapping root project rect@(x,y,w,h) (screenW,screenH) ed
     cull<-readIORef (cullingEnabled r)
     let draws=map fst prepared
         visible=if cull then filter (inFrustum (frustumPlanes vp) . cachedBounds . snd) prepared else prepared
-        colors=M.fromListWith merge [( (vertexArray buffer,surface), (buffer,surface,[pose])) | (d,pose)<-visible,mesh<-modelMeshes (drawModel d),let buffer=meshBuffer mesh;surface=resolveSurface r d mesh]
-        shadows=M.fromListWith mergeShadow [(vertexArray buffer,(buffer,[pose])) | (d,pose)<-prepared,mesh<-modelMeshes (drawModel d),let buffer=meshBuffer mesh]
+        colors=M.fromListWith merge [( (vertexArray buffer,paletteKey mesh,surface), (buffer,meshDeformation mesh,surface,[pose])) | (d,pose)<-visible,mesh<-modelMeshes (drawModel d),let buffer=meshBuffer mesh;surface=resolveSurface r d mesh]
+        shadows=M.fromListWith mergeShadow [((vertexArray buffer,paletteKey mesh),(buffer,meshDeformation mesh,[pose])) | (d,pose)<-prepared,mesh<-modelMeshes (drawModel d),let buffer=meshBuffer mesh]
+        paletteKey mesh=maybe 0 paletteTexture (meshDeformation mesh)
         callCount poses=if useBatch && length poses>1 then 1 else length poses
-    writeIORef (frameStats r) (FrameStats (sum [length (modelMeshes (drawModel d)) | (d,_)<-prepared]) (sum [length (modelMeshes (drawModel d)) | (d,_)<-visible]) (sum [callCount poses | (_,_,poses)<-M.elems colors]) (if sunShadows env then sum [callCount poses | (_,poses)<-M.elems shadows] else 0))
+    writeIORef (frameStats r) (FrameStats (sum [length (modelMeshes (drawModel d)) | (d,_)<-prepared]) (sum [length (modelMeshes (drawModel d)) | (d,_)<-visible]) (sum [callCount poses | (_,_,_,poses)<-M.elems colors]) (if sunShadows env then sum [callCount poses | (_,_,poses)<-M.elems shadows] else 0))
     ibl<-getEnvironment r (if null (environmentMap env) then "" else root </> environmentMap env)
     viewport<-ensureViewport r renderW renderH
     glDisable GL_SCISSOR_TEST
@@ -348,7 +360,7 @@ drawScene r mouse down snapping root project rect@(x,y,w,h) (screenW,screenH) ed
       glClear GL_DEPTH_BUFFER_BIT
       glUseProgram (programId (shadowProgram r))
       matrixUniform (shadowProgram r) "viewProjection" lightVP
-      forM_ (M.elems shadows) $ \(buffer,poses)->submit r useBatch (shadowProgram r) lightVP buffer poses
+      forM_ (M.elems shadows) $ \(buffer,palette,poses)->submit r useBatch (shadowProgram r) lightVP buffer palette poses
     bindTarget viewport
     glClear (GL_COLOR_BUFFER_BIT .|. GL_DEPTH_BUFFER_BIT)
     glDisable GL_DEPTH_TEST
@@ -377,9 +389,9 @@ drawScene r mouse down snapping root project rect@(x,y,w,h) (screenW,screenH) ed
       glActiveTexture (GL_TEXTURE0+9)
       glBindTexture GL_TEXTURE_2D (IBL.brdfTexture maps)
     matrixUniform (pbrProgram r) "viewProjection" vp
-    forM_ (M.elems colors) $ \(buffer,surface,poses)->do
+    forM_ (M.elems colors) $ \(buffer,palette,surface,poses)->do
       applySurface (pbrProgram r) (whiteTexture r) surface
-      submit r useBatch (pbrProgram r) vp buffer poses
+      submit r useBatch (pbrProgram r) vp buffer palette poses
     when edit $ do
       drawOverlays r vp displayed draws grid selected
       forM_ active $ \tool -> forM_ (selected >>= (\e->IM.lookup e (transforms displayed))) $ \pose ->
@@ -399,22 +411,23 @@ drawScene r mouse down snapping root project rect@(x,y,w,h) (screenW,screenH) ed
     checkGL "Haskell scene rendering"
     pure $ if edit && not captured && mouseEnabled sceneMouse && leftPressed mouse && inside inputRect mouse then pick (screenRay rect cam mouse) draws selected else selected
 
-merge :: (Buffer,Surface,[CachedPose]) -> (Buffer,Surface,[CachedPose]) -> (Buffer,Surface,[CachedPose])
-merge (buffer,surface,a) (_,_,b)=(buffer,surface,a++b)
-mergeShadow :: (Buffer,[CachedPose]) -> (Buffer,[CachedPose]) -> (Buffer,[CachedPose])
-mergeShadow (buffer,a) (_,b)=(buffer,a++b)
-submit :: Renderer -> Bool -> Program -> L.M44 Float -> Buffer -> [CachedPose] -> IO ()
-submit r batches shader vp buffer poses
-  | batches && length poses>1 = do
-      intUniform shader "useInstances" 1
-      drawInstances (instanceBuffer r) buffer (VS.fromList (concatMap cachedColumns poses))
-  | otherwise = do
-      intUniform shader "useInstances" 0
-      forM_ poses $ \pose->do
-        matrixUniform shader "mvp" (vp L.!*! cachedMatrix pose)
-        matrixUniform shader "matModel" (cachedMatrix pose)
-        matrixUniform shader "matNormal" (cachedNormal pose)
-        drawBuffer GL_TRIANGLES buffer
+merge :: (Buffer,Maybe Palette,Surface,[CachedPose]) -> (Buffer,Maybe Palette,Surface,[CachedPose]) -> (Buffer,Maybe Palette,Surface,[CachedPose])
+merge (buffer,palette,surface,a) (_,_,_,b)=(buffer,palette,surface,a++b)
+mergeShadow :: (Buffer,Maybe Palette,[CachedPose]) -> (Buffer,Maybe Palette,[CachedPose]) -> (Buffer,Maybe Palette,[CachedPose])
+mergeShadow (buffer,palette,a) (_,_,b)=(buffer,palette,a++b)
+submit :: Renderer -> Bool -> Program -> L.M44 Float -> Buffer -> Maybe Palette -> [CachedPose] -> IO ()
+submit r batches shader vp buffer palette poses=do
+  bindPalette shader (neutralPalette r) palette
+  if batches && maybe True (const False) palette && length poses>1 then do
+    intUniform shader "useInstances" 1
+    drawInstances (instanceBuffer r) buffer (VS.fromList (concatMap cachedColumns poses))
+  else do
+    intUniform shader "useInstances" 0
+    forM_ poses $ \pose->do
+      matrixUniform shader "mvp" (vp L.!*! cachedMatrix pose)
+      matrixUniform shader "matModel" (cachedMatrix pose)
+      matrixUniform shader "matNormal" (cachedNormal pose)
+      drawBuffer GL_TRIANGLES buffer
 resolveSurface :: Renderer -> Draw -> MeshData -> Surface
 resolveSurface r d mesh = Surface (maybe False (const True) source) color metal rough emit glow (F.normalScale info) occlusion maps
   where

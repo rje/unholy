@@ -137,11 +137,16 @@ set it to zero when changing clips if a fresh phase is desired. Empty clip means
 bind pose. Paused authored time is rendered in the editor. Stop restores the
 saved configuration, and cloning/prefabs retain it.
 
-`Unholy.Animation.loadRig`, `validateAnimator`, `sampleGlobals` and `posedMeshes`
-are headless APIs. cgltf supplies copied accessor data; Haskell owns interpolation,
-complete node hierarchy and skinning. Entity transforms apply once after skinning;
-the glTF skinned mesh node transform is ignored per specification. Renderer
-instance buffers borrow textures from an immutable source and release separately.
+`Unholy.Asset.GLTF.loadAsset` is the shared CPU asset loader. Validated `Rig` and
+`RigMesh` constructors are internal; public queries expose their retained data.
+`Unholy.Animation.loadRig`, `validateAnimator`, `sampleGlobals`, `posePalette` and
+`posedBounds` are headless APIs. cgltf supplies copied accessors; Haskell owns
+interpolation, hierarchy evaluation and palette preparation. GPU shaders perform
+rendered deformation in both PBR and shadow passes. `posedPositions` and
+`posedMeshes` provide on-demand picking and a CPU reference. Entity transforms
+apply once after deformation; the glTF skinned mesh node transform is ignored per
+specification. Rigid attachments use their full node transform. Each renderer
+instance borrows immutable source geometry/textures and owns a separate palette.
 Use primitive gameplay colliders for animated characters. See README for the
 bounded import format and unsupported animation features.
 

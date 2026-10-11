@@ -393,6 +393,9 @@ in Haskell. This baseline does not justify replacing the ECS or Bullet solver.
 
 ## Ownership and limits
 
+The later GPU-animation checkpoint below supersedes the glTF/CPU-skinning
+description in this historical ownership snapshot.
+
 Haskell now owns primitive generation, keyboard bindings, replay sequencing,
 text focus and edit-buffer state, clipping interaction and the Unity-style
 theme. Window/renderer/audio resources are explicit values; there are no
@@ -410,6 +413,73 @@ The engine's own source is 4,524 Haskell lines, 401 native-adapter lines and
 libraries, the vendored widget header, tests, sample game code, generated scenes
 and tooling. It describes engine ownership, not the implementation language of
 the graphics driver, solver or decoder dependencies.
+
+## Unified glTF and GPU animation checkpoint — 2026-10-11
+
+One validated Haskell asset now feeds glTF/GLB rendering, animation, picking and
+static mesh colliders. cgltf decodes accessors and embedded buffers; existing
+image adapters decode PNG/JPEG separately. No raylib model import or temporary
+GPU texture readback occurs for glTF. Selected-scene instances and explicit
+material indices stay paired through upload. The loader supports normalized
+integer weights/UVs, sparse and implicit-zero accessors, missing normals/UVs,
+and mixed rigid/skinned nodes. Missing normals split corners for flat shading.
+External, GLB and data-URI image fixtures decode to identical GPU pixels.
+
+Haskell evaluates globals once in parent order and owns position/normal palettes.
+Both PBR and depth shaders use the same deformation helper. Characters share
+immutable vertex/index/influence buffers and own separate palette resources.
+Per-joint influence boxes supply conservative animated bounds. CPU positions
+remain lazy for exact picking; a deliberately failing positions thunk survives
+ordinary draws. Tests compare GPU color/depth with a CPU reference, verify that
+pose changes leave bind vertex bytes untouched, retain nonzero texture-buffer
+bindings across the renderer boundary, and check independent disposal.
+
+`make test`, `make render-test` and `make app` passed locally. All nine checked-in
+demos validate and draw. `scripts/verify-demos.py animation-lab` exercised the
+normal picker Load/Play/Stop/Build path, verified unchanged authored source and
+exported asset bytes, and ran the exported player from `/tmp`. Two playing
+phases, the stopped editor and relocated player captures were inspected in
+`build/verification/demos/animation-lab/`. `scripts/verify-animation-lab.py`
+changed Survey to Walk with **Next clip**, reset time, retained pause/clamp,
+saved and reopened the conventional Fox plus rigid head tag. Its captures were
+inspected in `build/verification/animation-lab-authoring/`.
+
+The attributed, pinned Fox model and animations ship in
+[Animation Lab](../projects/animation-lab/README.md): four hero poses and 18
+independent rear characters. Twenty-one advance and one is authored paused.
+Astra's final bounded source review closed the flat-normal, embedded-image and
+palette-transfer findings and found no remaining material blocker. That review
+did not run the suites; the local evidence above came from the primary agent.
+
+### Moving-scene measurements
+
+`cabal run unholy-bench -- --animation +RTS -T` on Apple M4, macOS/arm64,
+GHC 9.14.1, `-O2`. The latest run used 120 component samples and 90 warm moving
+draw samples after 20 warm-up frames. Actual viewport: 2048 × 1536; shadow map:
+2048 × 2048. All 34 meshes were visible, with 31 color and 27 shadow calls.
+
+| Work | Mean ms | p95 ms | Haskell bytes/sample |
+| --- | ---: | ---: | ---: |
+| Evaluate 22 poses, palettes and influence bounds | 1.012 | 1.380 | 4,169,595 |
+| Evaluate 22 poses and full CPU vertex reference | 59.329 | 66.078 | 280,350,580 |
+| Moving scene draw submission | 2.726 | 3.412 | 4,475,537 |
+| Moving scene GPU timer interval | 3.473 | 4.261 | — |
+
+The two CPU rows compare components, not old/new renderer frame rates. The
+component probe varies all 22 poses; the actual scene advances 21 and keeps one
+paused. Shader deformation reduces the eligible per-pose-frame payload from
+1,161,216 bytes of reference vertices to 134,400 bytes of palettes; unchanged
+characters retain their palettes. These sizes are derived from the actual
+vectors, not driver-transfer instrumentation. GPU timer intervals can include
+CPU submission waits. This does not establish gameplay frame rate or large-crowd
+scalability. A prior local run measured 0.723/38.220 ms for the component rows
+and 3.303 ms for the GPU interval, illustrating normal local timing variation.
+
+Engine-owned physical source lines at this checkpoint: 5,025 Haskell, 412 native
+adapter and 318 GLSL, approximately 87.3% Haskell. This excludes vendored
+libraries, tests, samples and tools; formatting affects the count. Haskell owns
+the asset/pose/renderer policies, while cgltf, image decoders, Bullet, Lua,
+raylib's mixer/UI and the graphics driver retain their existing native roles.
 
 Compiled game source changes require a rebuild; no runtime Haskell plugin
 loader is included. Persistent authored components use explicit typed codecs and

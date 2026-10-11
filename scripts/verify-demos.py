@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Real Load/Play/Stop/Build and relocated Feature Courtyard player workflow."""
+"""Real Load/Play/Stop/Build and relocated demo player workflow."""
+import argparse
 import hashlib
 import json
 import math
@@ -8,9 +9,12 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / 'build/verification/demos'
+parser = argparse.ArgumentParser()
+parser.add_argument('demo', nargs='?', default='feature-courtyard')
+args = parser.parse_args()
+OUT = ROOT / 'build/verification/demos' / args.demo
 APP = ROOT / 'build/Unholy.app/Contents/MacOS/Unholy'
-PROJECT = ROOT / 'projects/feature-courtyard/project.hj.json'
+PROJECT = ROOT / 'projects' / args.demo / 'project.hj.json'
 OUT.mkdir(parents=True, exist_ok=True)
 
 
@@ -58,7 +62,7 @@ started = time.time()
 for frames, name in [(play + 60, 'editor-playing'), (play + 120, 'editor-later'), (play + 190, 'editor-stopped-built')]:
     run(APP, baseline, '--replay', replay, '--frames', frames, '--capture', OUT / (name + '.png'), log=name + '.log')
 assert hashlib.sha256(PROJECT.read_bytes()).digest() == before, 'Play/Stop/Build modified the demo source'
-export = PROJECT.parent / 'dist/feature-courtyard'
+export = PROJECT.parent / 'dist' / args.demo
 assert (export / 'project.hj.json').stat().st_mtime >= started, 'Load picker/Build did not create a fresh demo export'
 assert includes(scene, json.loads((export / 'project.hj.json').read_text())), 'Export changed authored demo fields'
 for asset in (PROJECT.parent / 'assets').rglob('*'):

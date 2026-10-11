@@ -9,11 +9,14 @@ import Control.Exception (bracket, bracketOnError, onException)
 import Control.Monad (forM, forM_, unless, when)
 import qualified Data.Map.Strict as M
 import qualified Data.Vector.Storable as VS
-import Linear (M44, V3(..), V4(..))
+import Linear (M44, V3(..), V4(..), transpose)
+import System.FilePath (takeDirectory, (</>))
 
 data Program = Program { programId :: !GLuint, locations :: !(M.Map String GLint) }
 data Target = Target { framebuffer :: !GLuint, colorTexture :: !GLuint, depthTexture :: !GLuint, targetWidth :: !Int, targetHeight :: !Int }
-data Buffer = Buffer { vertexArray :: !GLuint, vertexBuffer :: !GLuint, indexBuffer :: !GLuint, elementCount :: !GLsizei, indexed :: !Bool }
+data Buffer = Buffer { vertexArray :: !GLuint, vertexBuffer :: !GLuint, indexBuffer :: !GLuint, elementCount :: !GLsizei, indexed :: !Bool, influenceBuffer :: !GLuint }
+-- A character owns only this palette. Bind geometry belongs to its source asset.
+data Palette = Palette { paletteTexture :: !GLuint, paletteBuffer :: !GLuint }
 
 genObject :: (GLsizei -> Ptr GLuint -> IO ()) -> IO GLuint
 genObject gen = alloca $ \p -> gen 1 p >> peek p
@@ -22,6 +25,7 @@ deleteObject del ident = when (ident/=0) (with ident (del 1))
 
 uniformNames :: [String]
 uniformNames = ["mvp","matModel","matNormal","viewProjection","useInstances","texture0","shadowMap","lightVP","baseColor","metalness","roughness","emission","viewPos","sunDirection","sunColor","sunPower","ambientPower","exposure","fogColor","fogDensity","useShadows","lightCount","skyTop","skyBottom","mode"]
+  ++ ["useSkinning","jointPalette"]
   ++ ["iblEnabled","environmentIntensity","environmentRotation","environmentMap","irradianceMap","prefilterMap","brdfLUT","prefilterLevels","inverseVP","face","roughnessLevel"]
   ++ ["baseColorLinear","normalMap","metalMap","roughMap","emissiveMap","occlusionMap","emissiveColor","useNormalMap","normalScale","occlusionStrength"]
   ++ [field++"["++show i++"]" | i<-[0..7::Int],field<-["lightPosition","lightColor","lightPower"]]
@@ -30,7 +34,11 @@ loadProgram :: FilePath -> FilePath -> IO Program
 loadProgram vs fs = do
   vertex<-readFile vs
   fragment<-readFile fs
-  compileProgram vs vertex fs fragment
+  expanded<-if "// UNHOLY_SKINNING" `elem` lines vertex then do
+    skinning<-readFile (takeDirectory vs </> "skinning.vs")
+    pure (unlines [if line=="// UNHOLY_SKINNING" then skinning else line | line<-lines vertex])
+    else pure vertex
+  compileProgram vs expanded fs fragment
 
 compileProgram :: String -> String -> String -> String -> IO Program
 compileProgram vLabel vertex fLabel fragment =
@@ -39,7 +47,7 @@ compileProgram vLabel vertex fLabel fragment =
   bracketOnError glCreateProgram glDeleteProgram $ \p -> do
     glAttachShader p v
     glAttachShader p f
-    forM_ [(0,"vertexPosition"),(1,"vertexTexCoord"),(2,"vertexNormal")] $ \(i,name) -> withCString name (glBindAttribLocation p i)
+    forM_ [(0,"vertexPosition"),(1,"vertexTexCoord"),(2,"vertexNormal"),(11,"vertexJoints"),(12,"vertexWeights")] $ \(i,name) -> withCString name (glBindAttribLocation p i)
     glLinkProgram p
     okay<-getStatus (glGetProgramiv p) GL_LINK_STATUS
     unless okay $ do logText<-infoLog (glGetProgramiv p) (glGetProgramInfoLog p);ioError (userError ("Shader link failed: "++fLabel++"\n"++logText))
@@ -81,7 +89,7 @@ uploadBuffer vertices indices = do
   vbo<-genObject glGenBuffers `onException` deleteObject glDeleteVertexArrays vao
   let cleanup=deleteObject glDeleteBuffers vbo >> deleteObject glDeleteVertexArrays vao
   ebo<-(if VS.null indices then pure 0 else genObject glGenBuffers) `onException` cleanup
-  let buffer=Buffer vao vbo ebo (fromIntegral (if ebo==0 then VS.length vertices `div` 8 else VS.length indices)) (ebo/=0)
+  let buffer=Buffer vao vbo ebo (fromIntegral (if ebo==0 then VS.length vertices `div` 8 else VS.length indices)) (ebo/=0) 0
   (do
     glBindVertexArray vao
     glBindBuffer GL_ARRAY_BUFFER vbo
@@ -119,6 +127,52 @@ deleteBuffer Buffer{..} = do
   deleteObject glDeleteVertexArrays vertexArray
   deleteObject glDeleteBuffers vertexBuffer
   deleteObject glDeleteBuffers indexBuffer
+  deleteObject glDeleteBuffers influenceBuffer
+
+uploadSkinBuffer :: VS.Vector Float -> VS.Vector Word16 -> Int -> VS.Vector (V4 Word16) -> VS.Vector (V4 Float) -> IO Buffer
+uploadSkinBuffer vertices indices offset joints weights = bracketOnError (uploadBuffer vertices indices) deleteBuffer $ \buffer -> do
+  influence<-genObject glGenBuffers
+  let result=buffer {influenceBuffer=influence}
+      values=VS.generate (VS.length joints*8) $ \i->
+        let (vertex,c)=i `divMod` 8
+            V4 a b d e=joints VS.! vertex
+            V4 w x y z=weights VS.! vertex
+        in if c<4 then fromIntegral (offset+fromIntegral ([a,b,d,e]!!c)) else [w,x,y,z]!!(c-4)
+  (do
+    glBindVertexArray (vertexArray buffer)
+    glBindBuffer GL_ARRAY_BUFFER influence
+    VS.unsafeWith values $ \p->glBufferData GL_ARRAY_BUFFER (fromIntegral (VS.length values*4)) (castPtr p) GL_STATIC_DRAW
+    forM_ [(11,0),(12,16)] $ \(location',byteOffset)->do
+      glEnableVertexAttribArray location'
+      glVertexAttribPointer location' 4 GL_FLOAT GL_FALSE 32 (intPtrToPtr byteOffset)
+    pure result) `onException` deleteObject glDeleteBuffers influence
+
+newPalette :: VS.Vector (M44 Float) -> IO Palette
+newPalette matrices=do
+  maximumTexels<-getInt GL_MAX_TEXTURE_BUFFER_SIZE
+  unless (VS.length matrices*4<=fromIntegral maximumTexels) (ioError (userError "Joint palette exceeds device texture-buffer capacity"))
+  bracketOnError (genObject glGenBuffers) (deleteObject glDeleteBuffers) $ \buffer->
+    bracketOnError (genObject glGenTextures) (deleteObject glDeleteTextures) $ \texture->do
+      let palette=Palette texture buffer
+      updatePalette palette matrices
+      glActiveTexture (GL_TEXTURE0+10)
+      glBindTexture GL_TEXTURE_BUFFER texture
+      glTexBuffer GL_TEXTURE_BUFFER GL_RGBA32F buffer
+      pure palette
+updatePalette :: Palette -> VS.Vector (M44 Float) -> IO ()
+updatePalette palette matrices=do
+  -- GLSL consumes columns; Linear stores rows. Position and normal matrices
+  -- occupy four RGBA texels each and share one packing rule in both passes.
+  glBindBuffer GL_TEXTURE_BUFFER (paletteBuffer palette)
+  VS.unsafeWith (VS.map transpose matrices) $ \p->glBufferData GL_TEXTURE_BUFFER (fromIntegral (VS.length matrices*64)) (castPtr p) GL_STREAM_DRAW
+deletePalette :: Palette -> IO ()
+deletePalette palette=deleteObject glDeleteTextures (paletteTexture palette) >> deleteObject glDeleteBuffers (paletteBuffer palette)
+bindPalette :: Program -> Palette -> Maybe Palette -> IO ()
+bindPalette shader neutral palette=do
+  intUniform shader "useSkinning" (maybe 0 (const 1) palette)
+  intUniform shader "jointPalette" 10
+  glActiveTexture (GL_TEXTURE0+10)
+  glBindTexture GL_TEXTURE_BUFFER (paletteTexture (maybe neutral id palette))
 
 newTexture :: Int -> Int -> Ptr a -> IO GLuint
 newTexture = newTextureWithColorSpace False
@@ -171,6 +225,7 @@ data GLState = GLState
   { savedDrawFbo :: !GLint, savedReadFbo :: !GLint, savedViewport :: !(V4 GLint)
   , savedProgram :: !GLint, savedVAO :: !GLint, savedVBO :: !GLint
   , savedActiveTexture :: !GLint, savedTex0 :: !GLint, savedTex1 :: !GLint, savedOtherTextures :: ![GLint], savedCubeTextures :: ![GLint]
+  , savedPaletteTexture :: !GLint, savedPaletteBuffer :: !GLint
   , savedUnpack :: !GLint, savedPack :: !GLint, savedDepthFunc :: !GLint, savedCullFace :: !GLint
   , savedDepthMask :: !GLboolean, savedFlags :: ![(GLenum,GLboolean)]
   } deriving (Eq,Show)
@@ -191,6 +246,9 @@ captureState = do
   savedTex1<-getInt GL_TEXTURE_BINDING_2D
   savedOtherTextures<-forM [2..9] $ \unit->glActiveTexture (GL_TEXTURE0+unit) >> getInt GL_TEXTURE_BINDING_2D
   savedCubeTextures<-forM [0..9] $ \unit->glActiveTexture (GL_TEXTURE0+unit) >> getInt GL_TEXTURE_BINDING_CUBE_MAP
+  glActiveTexture (GL_TEXTURE0+10)
+  savedPaletteTexture<-getInt GL_TEXTURE_BINDING_BUFFER
+  savedPaletteBuffer<-getInt GL_TEXTURE_BUFFER_BINDING
   glActiveTexture (fromIntegral savedActiveTexture)
   savedUnpack<-getInt GL_UNPACK_ALIGNMENT
   savedPack<-getInt GL_PACK_ALIGNMENT
@@ -214,6 +272,9 @@ restoreState GLState{..} = do
   glBindTexture GL_TEXTURE_2D (fromIntegral savedTex1)
   forM_ (zip [2..9] savedOtherTextures) $ \(unit,tex)->glActiveTexture (GL_TEXTURE0+unit) >> glBindTexture GL_TEXTURE_2D (fromIntegral tex)
   forM_ (zip [0..9] savedCubeTextures) $ \(unit,tex)->glActiveTexture (GL_TEXTURE0+unit) >> glBindTexture GL_TEXTURE_CUBE_MAP (fromIntegral tex)
+  glActiveTexture (GL_TEXTURE0+10)
+  glBindTexture GL_TEXTURE_BUFFER (fromIntegral savedPaletteTexture)
+  glBindBuffer GL_TEXTURE_BUFFER (fromIntegral savedPaletteBuffer)
   glActiveTexture (fromIntegral savedActiveTexture)
   glPixelStorei GL_UNPACK_ALIGNMENT savedUnpack
   glPixelStorei GL_PACK_ALIGNMENT savedPack

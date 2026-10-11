@@ -1,5 +1,32 @@
 # Astra review of Unholy — 2026-10-11
 
+## Implemented follow-up: unified import and GPU animation
+
+The findings below describe the original `49bd449` snapshot. The follow-up
+implemented the audio ownership fix, one validated CPU glTF asset representation,
+abstract rig constructors, one hierarchy evaluation per pose and GPU deformation
+in both material and shadow passes. The renderer retains immutable bind meshes,
+uploads per-character palettes, computes conservative influence bounds and
+defers CPU vertex deformation until exact picking. The new Haskell import and
+animation modules use conventional formatting and separate responsibilities.
+
+[Animation Lab](../projects/animation-lab/README.md) includes the attributed
+Khronos Fox with 22 independent poses and a rigid joint attachment. The inspector
+lists/cycles imported clips. cgltf and existing image decoders remain the native
+format boundary; glTF no longer passes through raylib's model importer or
+temporary texture readback. Legacy OBJ/IQM keep that adapter.
+
+Astra reviewed the GPU/import implementation read-only and found three material
+issues: smooth rather than flat missing normals, missing data-URI image support
+and an unmasked palette ownership transfer. All three were corrected and covered
+by targeted checks. Its final bounded source review found no remaining blocker;
+the primary agent ran the suites and editor/export workflows. See the
+[verification report](haskell-verification.md) for measurements and evidence.
+The broader public renderer-handle API and readability of older dense modules
+remain future improvements; this milestone does not claim they are resolved.
+
+## Original review
+
 Reviewed engine revision: `49bd449decbb4d66f5825ee57bcfc317fcd8084d`.
 This is a read-only GPT-6 Astra review of the engine's Haskell architecture,
 public interfaces, import/animation path and resource ownership. The findings

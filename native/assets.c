@@ -41,6 +41,15 @@ void *hj_asset_image(const char *path,int *size) {
     size[0]=image->width;size[1]=image->height;
     return image;
 }
+void *hj_asset_image_bytes(const char *extension,const unsigned char *bytes,int count,int *size) {
+    Image *image=calloc(1,sizeof(Image));
+    if(!image) return NULL;
+    *image=LoadImageFromMemory(extension,bytes,count);
+    if(!IsImageValid(*image)) {free(image);return NULL;}
+    ImageFormat(image,PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    size[0]=image->width;size[1]=image->height;
+    return image;
+}
 void *hj_asset_pixels(void *p) {return ((Image *)p)->data;}
 void hj_asset_image_free(void *p) {if(p) {UnloadImage(*(Image *)p);free(p);} }
 int hj_asset_material_index(void *p,int index) { return ((Model *)p)->meshMaterial[index]; }

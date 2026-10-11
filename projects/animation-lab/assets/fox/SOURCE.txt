@@ -1,0 +1,4 @@
+KhronosGroup/glTF-Sample-Assets
+Revision: edc7c9e67c639d230715049ee31f9a96a6babbbe
+Source: https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/edc7c9e67c639d230715049ee31f9a96a6babbbe/Models/Fox/
+Downloaded 2026-10-11. Original files unchanged. See UPSTREAM.md for attribution.

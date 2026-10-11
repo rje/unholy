@@ -6,6 +6,8 @@ import Unholy.Asset.CPU (loadTriangles)
 import qualified Unholy.Input as I
 import qualified Data.IntSet as S
 import qualified Unholy.Audio as Audio
+import qualified Unholy.Animation as Animation
+import qualified Unholy.Asset.GLTF as Asset
 import qualified Unholy.Gizmo as Gizmo
 import qualified Unholy.Terrain as T
 import Unholy.Types
@@ -24,7 +26,7 @@ import qualified Data.Vector.Storable as VS
 import Graphics.GL
 import Data.IORef
 import Foreign
-import Control.Monad (unless, forM_, replicateM_)
+import Control.Monad (unless, forM, forM_, replicateM_)
 import Control.Exception (try, IOException, bracket)
 import Control.Concurrent (runInBoundThread, forkIO, newEmptyMVar, putMVar, takeMVar)
 import System.Directory (createDirectoryIfMissing, makeAbsolute)
@@ -70,6 +72,14 @@ checks :: N.Window -> R.Renderer -> IO ()
 checks window r = do
   createDirectoryIfMissing True "build/verification/haskell-renderer"
   let rect=(230,70,640,480)
+  pixels<-forM ["external.gltf","data-uri.gltf","embedded.glb"] $ \name->
+    G.preservingState $ \_->bracket (Asset.loadAsset ("test/fixtures/gltf/"++name) >>= A.uploadRig True) A.deleteModel $ \model->do
+      let texture=maybe (error "Missing fixture base texture") id (A.importedTexture (head (A.modelMeshes model)))
+      glActiveTexture GL_TEXTURE0
+      glBindTexture GL_TEXTURE_2D texture
+      allocaArray 4 $ \out->glGetTexImage GL_TEXTURE_2D 0 GL_RGBA GL_UNSIGNED_BYTE out >> peekArray 4 out :: IO [Word8]
+  assert "External, GLB and data-URI image decoding differs" (all (==head pixels) (tail pixels))
+  pass "unified external/GLB/data-URI texture decoding before GPU upload"
   animatedRendering window r rect
   terrainRendering window r rect
   originalUI<-readIORef (N.uiState window)
@@ -486,7 +496,45 @@ animatedRendering window r rect=do
   bounds<-readIORef (R.poseCache r)
   let (_,_,left)=cache IM.! 1;(_,_,right)=cache IM.! 2
       leftMesh=head (A.modelMeshes left);rightMesh=head (A.modelMeshes right)
-  assert "Two poses shared mutable buffers or geometry" (G.vertexArray (A.meshBuffer leftMesh)/=G.vertexArray (A.meshBuffer rightMesh) && A.meshPositions leftMesh/=A.meshPositions rightMesh)
+  let palette mesh=maybe (error "Missing character palette") id (A.meshDeformation mesh)
+  assert "Characters must share bind geometry and retain independent palettes" (G.vertexArray (A.meshBuffer leftMesh)==G.vertexArray (A.meshBuffer rightMesh) && G.paletteTexture (palette leftMesh)/=G.paletteTexture (palette rightMesh) && A.meshPositions leftMesh/=A.meshPositions rightMesh)
+  bindBefore<-bufferBytes (G.vertexBuffer (A.meshBuffer leftMesh)) (VS.length (A.meshPositions leftMesh)*8*4)
+  -- Ordinary rendering must not evaluate the on-demand CPU picking geometry.
+  let poison model=model {A.modelMeshes=map (\mesh->mesh {A.meshPositions=error "Draw forced CPU skinning"}) (A.modelMeshes model)}
+  writeIORef (R.animatedInstances r) (IM.map (\(path,config,model)->(path,config,poison model)) cache)
+  render window scene rect False
+  writeIORef (R.animatedInstances r) cache
+  G.preservingState $ \_->do
+    N.begin window
+    R.flushUI
+    glActiveTexture (GL_TEXTURE0+10)
+    glBindTexture GL_TEXTURE_BUFFER (G.paletteTexture (palette rightMesh))
+    glBindBuffer GL_TEXTURE_BUFFER (G.paletteBuffer (palette leftMesh))
+    glActiveTexture (GL_TEXTURE0+4)
+    before<-G.captureState
+    _<-N.drawScene window "." scene rect False False Nothing
+    after<-G.captureState
+    assert ("Animated rendering changed borrowed texture-buffer bindings: "++show (before,after)) (before==after)
+    N.end window
+  -- Reference rendering disables shader deformation and uploads CPU poses once
+  -- in this test, comparing both PBR pixels and the depth pass against the GPU.
+  rig<-Animation.loadRig "test/fixtures/animation/fixture.gltf"
+  cpuBuffers<-newIORef []
+  reference<-IM.traverseWithKey (\e (path,config,model)->do
+    meshes<-forM (zip (Animation.posedMeshes rig config) (A.modelMeshes model)) $ \(raw,mesh)->do
+      buffer<-G.uploadBuffer raw (A.meshIndices mesh)
+      modifyIORef' cpuBuffers (buffer:)
+      pure mesh {A.meshBuffer=buffer,A.meshDeformation=Nothing}
+    pure (path,config,model {A.modelMeshes=meshes})) cache
+  writeIORef (R.animatedInstances r) reference
+  render window scene rect False
+  cpuPixels<-targetPixels r
+  cpuShadow<-shadowPixels
+  writeIORef (R.animatedInstances r) cache
+  readIORef cpuBuffers >>= mapM_ G.deleteBuffer
+  let pixelError=VS.sum (VS.zipWith (\a b->abs (fromIntegral a-fromIntegral b)::Int) prior cpuPixels)
+  assert "GPU/CPU PBR deformation differs" (fromIntegral pixelError/fromIntegral (VS.length prior)<(0.5::Double))
+  assert "GPU/CPU shadow deformation differs" (VS.maximum (VS.zipWith (\a b->abs (a-b)) priorShadow cpuShadow)<0.00001)
   let ray=C.Ray (L.V3 (-2) 1.1 5) (L.V3 0 0 (-1))
       draw=R.Draw 1 left (C.modelMatrix (transforms (world scene) IM.! 1) L.identity) defaultMaterial (R.whiteTexture r) False
   assert "Animated CPU picking lost triangle" (R.pick ray [draw] Nothing==Just 1)
@@ -495,17 +543,25 @@ animatedRendering window r rect=do
   laterShadow<-shadowPixels
   assert "Animated vertices did not reach the shadow pass" (VS.sum (VS.zipWith (\x y->abs (x-y)) priorShadow laterShadow)>0.01)
   updated<-readIORef (R.poseCache r)
+  bindAfter<-bufferBytes (G.vertexBuffer (A.meshBuffer leftMesh)) (VS.length (A.meshPositions leftMesh)*8*4)
+  assert "Animation rewrote immutable bind-pose vertices" (bindBefore==bindAfter)
   assert "Changing only a pose retained stale bounds or GPU pixels" (R.cachedBounds (updated IM.! 1)/=R.cachedBounds (bounds IM.! 1) && VS.sum (VS.zipWith (\x y->abs (fromIntegral x-fromIntegral y)::Int) prior later)>1000)
   render window scene {world=(world scene) {animators=IM.adjust (\a->a {animationClip="typing-unknown"}) 1 (animators (world scene))}} rect False
   messages<-R.takeErrors r
   assert "Unknown clip did not remain editable with diagnostic" (not (null messages))
   render window scene {world=destroy 1 (world scene)} rect False
-  glIsVertexArray (G.vertexArray (A.meshBuffer leftMesh)) >>= assert "Deleted animation instance leaked" . (==GL_FALSE)
+  glIsTexture (G.paletteTexture (palette leftMesh)) >>= assert "Deleted animation palette leaked" . (==GL_FALSE)
+  glIsTexture (G.paletteTexture (palette rightMesh)) >>= assert "Deleting a character removed another palette" . (==GL_TRUE)
   glIsVertexArray (G.vertexArray (A.meshBuffer rightMesh)) >>= assert "Deleting one animation removed another" . (==GL_TRUE)
   N.unloadAssets window
   glIsVertexArray (G.vertexArray (A.meshBuffer rightMesh)) >>= assert "Animation unload leaked" . (==GL_FALSE)
-  pass "independent skinned poses, refreshed bounds/picking/pixels, invalid clip recovery and instance lifetime"
+  pass "GPU/CPU PBR and shadow parity, shared bind geometry, independent palettes, bounds/picking and instance lifetime"
   where
+    bufferBytes buffer count=G.preservingState $ \_->do
+      glBindBuffer GL_ARRAY_BUFFER buffer
+      storage<-mallocForeignPtrArray count
+      withForeignPtr storage $ \p->glGetBufferSubData GL_ARRAY_BUFFER 0 (fromIntegral count) p
+      pure (VS.unsafeFromForeignPtr0 storage count :: VS.Vector Word8)
     shadowPixels=G.preservingState $ \_->do
       let t=R.shadowTarget r;count=G.targetWidth t*G.targetHeight t
       storage<-mallocForeignPtrArray count

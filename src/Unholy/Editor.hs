@@ -1,6 +1,7 @@
 module Unholy.Editor (runEditor, runPlayer) where
 
 import qualified Unholy.Terrain as Terrain
+import qualified Unholy.Renderer as Renderer
 import Unholy.Types
 import Unholy.Transform (setTransform,relative)
 import Unholy.Prefab
@@ -21,7 +22,7 @@ import System.FilePath
 import System.Process (readProcess, callProcess)
 import System.Info (os)
 import Data.IORef
-import Data.List (sort, isSuffixOf)
+import Data.List (sort, isSuffixOf, intercalate)
 import Data.Maybe (isJust)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Control.Exception (finally, evaluate, onException)
@@ -428,14 +429,21 @@ entityInspector window x y s = case selected s of
         add<-N.button window x (y+1535) 287 30 "Add Animator / glTF skin" 0
         pure (if add && IM.member e (meshes w4) then w4 {animators=IM.insert e defaultAnimator (animators w4)} else w4)
       Just a->do
-        clip<-N.textbox window 26 x (y+1535) 287 30 (animationClip a)
+        clips<-N.withRenderer window (\renderer->case IM.lookup e (meshes w4) of
+          Nothing->pure []
+          Just mesh->Renderer.availableClips renderer (takeDirectory (file s) </> geometry mesh))
+        typedClip<-N.textbox window 26 x (y+1535) 139 30 (animationClip a)
+        choose<-N.button window (x+147) (y+1535) 140 30 ("Next clip / "++show (length clips)) 0
+        let nextClip=case dropWhile (/=animationClip a) clips of _:value:_->value;_->case clips of value:_->value;_->typedClip
+            clip=if choose then nextClip else typedClip
         phase<-N.textbox window 27 x (y+1575) 139 30 (show (animationTime a))
         rate<-N.textbox window 28 (x+147) (y+1575) 140 30 (show (animationRate a))
         N.text window x (y+1610) 12 "Pose seconds / playback rate 0..10" 1
         loop<-N.button window x (y+1635) 139 30 (if animationLoop a then "Loop" else "Clamp") 0
         play<-N.button window (x+147) (y+1635) 140 30 (if animationPlaying a then "Playing" else "Paused") 0
         remove<-N.button window x (y+1675) 287 30 "Remove Animator" 2
-        let next=a {animationClip=clip,animationTime=max 0 (maybe (animationTime a) id (readFloat phase)),animationRate=max 0 (min 10 (maybe (animationRate a) id (readFloat rate))),animationLoop=if loop then not (animationLoop a) else animationLoop a,animationPlaying=if play then not (animationPlaying a) else animationPlaying a}
+        N.text window x (y+1710) 11 ("Clips: "++intercalate ", " clips) 1
+        let next=a {animationClip=clip,animationTime=if choose then 0 else max 0 (maybe (animationTime a) id (readFloat phase)),animationRate=max 0 (min 10 (maybe (animationRate a) id (readFloat rate))),animationLoop=if loop then not (animationLoop a) else animationLoop a,animationPlaying=if play then not (animationPlaying a) else animationPlaying a}
         pure w4 {animators=if remove then IM.delete e (animators w4) else IM.insert e next (animators w4)}
     N.text window x (y+1750) 13 "FINITE TERRAIN" 2
     w6<-case IM.lookup e (terrains w5) of

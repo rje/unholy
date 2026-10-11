@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 -- Metadata only: Aeson preserves float factors that raylib's geometry importer
 -- drops or quantizes. Geometry and image decoding remain upstream integrations.
-module Unholy.Renderer.GLTF (MaterialInfo(..),defaultInfo,loadMaterials,loadAnimatedMaterials,readDocument,assetDependencies) where
+module Unholy.Renderer.GLTF (MaterialInfo(..),defaultInfo,loadMaterials,loadAnimatedMaterials,parseMaterials,readDocument,assetDependencies) where
 
 import qualified Data.Aeson as A
 import Data.Aeson ((.:?),(.!=))
@@ -29,6 +29,8 @@ loadAnimatedMaterials=loadWith True
 loadWith :: Bool -> FilePath -> IO (Maybe (IM.IntMap MaterialInfo))
 loadWith animated path=readDocument path >>= traverse (parse (document animated))
   where parse parser value=either (failure path) pure (A.parseEither parser value)
+parseMaterials :: Bool -> A.Value -> Either String (IM.IntMap MaterialInfo)
+parseMaterials animated=A.parseEither (document animated)
 
 assetDependencies :: FilePath -> IO [FilePath]
 assetDependencies path=do
@@ -83,7 +85,7 @@ document animated=A.withObject "glTF" $ \o->do
       attrs<-p .:? "attributes" .!= (KM.empty :: KM.KeyMap A.Value)
       unless (not (KM.member "COLOR_0" attrs)) (fail "Vertex colors are not supported")
   values<-o .:? "materials" .!= ([]::[A.Value])
-  IM.fromList . zip [1..] <$> mapM material values
+  IM.fromList . zip [0..] <$> mapM material values
 
 material :: A.Value -> A.Parser MaterialInfo
 material=A.withObject "material" $ \o->do
