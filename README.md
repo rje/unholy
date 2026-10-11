@@ -27,8 +27,9 @@ python3 scripts/verify-authoring.py
 ```
 
 Tested here with GHC 9.14.1, raylib 6.0, bundled Lua 5.4.8 and Bullet 3.25 on Apple
-silicon. Cabal supplies Aeson, OpenGLRaw, linear and their dependencies. The source also has Linux
-build configuration, but Linux has not been qualified.
+silicon. Cabal supplies Aeson, OpenGLRaw, linear and their dependencies. Ubuntu
+24.04 CI also builds the editor/library and tests headless gameplay, generated
+packages and exports. Linux desktop graphics and audio remain unqualified.
 
 ## Editor
 
@@ -64,9 +65,11 @@ build configuration, but Linux has not been qualified.
   target the current OS and CPU architecture; this is not cross-compilation.
   Export copies the complete `assets/` tree plus direct scene references and
   the selected Haskell game's declared files, retaining relative paths.
-  Asset symlinks and reserved export destinations are rejected. Keep multifile
-  models and their dependencies beneath `assets/`; explicitly declare files
-  elsewhere. A failed staging check leaves the previous export intact.
+  Asset symlinks and reserved export destinations are rejected. glTF buffer and
+  image dependencies are discovered automatically, including models outside
+  `assets/`. Declare other game files that have no direct scene reference in
+  the game's `requiredAssets`. A failed staging check leaves the previous
+  export intact.
 
 Viewport: **RMB drag** orbits, **MMB drag** pans, **wheel** zooms, **F** focuses
 the selected entity. **W/E/R** select move/rotate/scale tools; drag the colored
@@ -200,7 +203,8 @@ lifetime/policy, collision-event dispatch, prefabs, parent transforms, primitive
 geometry, input bindings, replay timing, text focus/edit buffers, clipping interaction
 and the editor theme. Window, renderer and audio ownership is explicit; Haskell
 uses no global engine singleton. Components
-are **Name, Transform, Parent, Mesh, Material, Script, Light and Body**. Systems join the
+are **Name, Transform, Parent, Mesh, Material, Script, Light and Body**, with an
+**Authored** store for registered game `Component a` fields. Systems join the
 tables they need. Small scalar FFI adapters call established native libraries:
 
 - [OpenGLRaw](https://hackage.haskell.org/package/OpenGLRaw): direct graphics API
@@ -302,11 +306,12 @@ The next targets follow these limits and the measured baseline:
    work before larger scenes are a useful promise.
 2. Add environment-map IBL to the Haskell renderer and exercise it in Material
    Gallery, with the existing sun/shadow path retained.
-3. Reuse Bullet's capsule, convex and static triangle-mesh colliders for a sample
-   that needs them. Collider authoring and lifetime stay in Haskell.
-4. Broaden configurable input and controller support through the existing
-   window backend. Add skeletal animation and terrain when a playable sample
-   establishes their requirements.
+3. Extend a playable sample with the collider/input support it needs: reuse
+   Bullet's appropriate capsule, convex or static triangle-mesh shape and the
+   existing window backend's controller input. Authoring, bindings and resource
+   lifetime stay in Haskell.
+4. Add skeletal animation and terrain when a playable sample establishes their
+   requirements.
 
 These are remaining targets, not implemented features. Measurements and clean
 public-package qualification are in [the current verification report](docs/haskell-verification.md).

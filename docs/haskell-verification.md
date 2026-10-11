@@ -11,8 +11,9 @@ imported material policy. The sections below retain the earlier checkpoints
 and their measured evidence.
 
 macOS qualification uses Apple M4, GHC 9.14.1, raylib 6.0, Bullet 3.25 and
-Cabal's bundled Lua 5.4.8. Linux headless CI is being qualified separately;
-Linux desktop graphics, editor interaction and audible output are unqualified.
+Cabal's bundled Lua 5.4.8. Ubuntu 24.04 headless CI also passes the library/editor
+build, engine/game tests and generated-package export check. Linux desktop
+graphics, editor interaction and audible output are unqualified.
 
 ## Reliability checkpoint
 
@@ -154,7 +155,8 @@ The generated executable launched the actual editor and exported its project
 from the generated package's directory, outside the engine checkout. The editor
 and exported player both show **CIRCUIT COMPLETE** using
 `test/circuit-editor-smoke.rae`. Shader discovery uses installed package data;
-the export contains its sibling shaders and relocated native libraries.
+the export contains its sibling shaders and relocated native libraries. A second
+exported-player replay from unrelated `/tmp` also reaches the completed circuit.
 Captures and logs are retained in `build/verification/clean-public-package/`.
 
 Reproduce with a new destination and store:
@@ -171,6 +173,21 @@ project/dist/my-puzzle/unholy-player --play project/dist/my-puzzle/project.hj.js
 The generator pins the engine revision current at generation time. Native
 dependencies still need installing for development; a fresh store means fresh
 Cabal dependencies, not a machine without a compiler or native libraries.
+
+## Linux headless CI
+
+The [Ubuntu 24.04 workflow](https://github.com/rje/unholy/actions/runs/38116528173)
+passes with GHC 9.14.1, raylib 6.0 built from its release tag, and the distribution's
+Bullet package. It builds all library/editor/game/test targets, runs 20 engine
+integration groups and both independent game tests, then generates a package
+outside the checkout, builds/tests it, checks/exports its scene and runs the
+exported player's headless check from an unrelated directory. This CI-generated
+package uses the explicit local-checkout dependency; the macOS fresh-public
+package check above separately qualifies the public Git revision path.
+
+The workflow runs on pushes and pull requests. The benchmark's CPU-only path
+also passes in this workflow. Graphics, real editor interaction and audible
+output require separate desktop qualification; this CI run does not supply it.
 
 ## Representative performance baseline
 
