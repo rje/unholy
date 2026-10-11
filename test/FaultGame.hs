@@ -19,7 +19,7 @@ main=do
         failOnce "after"
         first<-if mode=="hud" then atomicModifyIORef' armed (\old->(False,old)) else pure False
         pure (state,p,[HUD (if first then [head []] else "HEALTHY / editable scene preserved")])
-      definition=game Game {identifier="fault-check",requiredAssets=[],
+      definition=game Game {identifier="fault-check",requiredAssets=[],components=[],validateScene=const (Right ()),
         initialize= \_ p->do
           putStrLn "FAULT-CHECK initialize"
           failOnce "initialize"

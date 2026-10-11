@@ -144,6 +144,13 @@ key w k pressed=do
   pure (focusedText state==Nothing && (if pressed then I.keyPressed else I.keyHeld) k (frameInput state))
 clearFocus :: Window -> IO ()
 clearFocus w=modifyIORef' (uiState w) (\s->s {focusedText=Nothing})
+editGesture :: Window -> IO (Maybe Int)
+editGesture w=do
+  state<-readIORef (uiState w)
+  pure $ case focusedText state of
+    Just (ident,_)->Just ident
+    Nothing | I.leftDown (frameInput state)->Just (-1)
+            | otherwise->Nothing
 uiEnabled :: Window -> Bool -> IO ()
 uiEnabled w value=modifyIORef' (uiState w) (\s->s {enabled=value})
 input :: Window -> IO I.Input

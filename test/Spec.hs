@@ -2,6 +2,7 @@ module Main where
 
 import LibrarySpec
 import ReliabilitySpec
+import AuthoringSpec
 import RuntimeSpec
 import FeatureSpec
 import Unholy.Types
@@ -28,6 +29,8 @@ load name = loadProject ("projects" </> name </> projectFile) >>= either (ioErro
 
 main :: IO ()
 main = do
+  test "Persistent typed authoring fields, reference remapping and unknown data" authoredReferences
+  test "Game-owned resource acquisition and once-only LIFO cleanup" ownedResources
   test "Project validation, complete exports, symlinks and failed-build preservation" projectReliability
   test "Haskell primitive CPU geometry, winding, UVs and collider dimensions" primitiveGeometry
   test "Typed game-owned components and Haskell input policy" typedInputComponents

@@ -1,4 +1,4 @@
-packages: . examples/pulse-courier
+packages: . examples/pulse-courier examples/circuit-breaker
 -- OpenGLRaw's published bounds predate the GHC 9.14 boot libraries.
 -- Keep this exception local to these two bounds; renderer checks exercise it.
 allow-newer: OpenGLRaw:base, OpenGLRaw:containers

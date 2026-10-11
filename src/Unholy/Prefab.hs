@@ -5,6 +5,7 @@ import Unholy.Transform
 import Unholy.Project
 import Unholy.JSON
 import qualified Data.IntMap.Strict as IM
+import qualified Data.Map.Strict as M
 import Control.Monad (unless)
 import System.Directory (createDirectoryIfMissing, renameFile)
 import System.FilePath (takeDirectory, (</>))
@@ -31,7 +32,8 @@ makePrefab e input = do
   let members=IM.fromList [(id',()) | id'<-descendants e w]
       keep table=IM.intersection table members
       rootPose=transforms w IM.! e
-      subset=w {names=keep (names w),transforms=IM.insert e (rootPose {position=V3 0 0 0}) (keep (transforms w)),meshes=keep (meshes w),materials=keep (materials w),scripts=keep (scripts w),lights=keep (lights w),bodies=keep (bodies w),parents=IM.delete e (keep (parents w))}
+      subset=w {names=keep (names w),transforms=IM.insert e (rootPose {position=V3 0 0 0}) (keep (transforms w)),meshes=keep (meshes w),materials=keep (materials w),scripts=keep (scripts w),lights=keep (lights w),bodies=keep (bodies w),parents=IM.delete e (keep (parents w)),authored=keep (authored w)}
+  unless (all (\ref->IM.member ref members) [ref | values<-IM.elems (authored subset),fs<-M.elems values,EntityValue (Just ref)<-M.elems fs]) (Left "Prefab has an authored reference outside its assembly; include the target in the prefab")
   validateWorld subset
   pure (Prefab e (resolveWorld subset))
 savePrefab :: FilePath -> Prefab -> IO (Either String ())
@@ -45,14 +47,16 @@ savePrefab path prefab = ioEither $ do
 instantiate :: Prefab -> Transform -> World -> Either String (Entity,[Entity],World)
 instantiate prefab placement current = do
   let source=prefabWorld prefab; ids=IM.keys (names source)
+  validateWorld source
   unless (IM.size (names current)+length ids<=4096) (Left "Runtime entity limit (4096) reached")
   let remap=IM.fromList (zip ids [nextId current..]);idOf e=remap IM.! e
       root=idOf (prefabRoot prefab)
       copy table old=IM.union (IM.fromList [(idOf e,v) | (e,v)<-IM.toAscList table]) old
       poses=IM.mapWithKey (\e t -> if e==prefabRoot prefab then compose placement t else t) (transforms source)
       parentCopies=IM.map (\p -> p {parentEntity=idOf (parentEntity p)}) (parents source)
+      authoredCopies=IM.map (mapReferences (\e->IM.lookup e remap)) (authored source)
       next=resolveWorld current {nextId=nextId current+length ids,names=copy (names source) (names current),transforms=copy poses (transforms current)
         ,meshes=copy (meshes source) (meshes current),materials=copy (materials source) (materials current),scripts=copy (scripts source) (scripts current)
-        ,lights=copy (lights source) (lights current),bodies=copy (bodies source) (bodies current),parents=copy parentCopies (parents current)}
+        ,lights=copy (lights source) (lights current),bodies=copy (bodies source) (bodies current),parents=copy parentCopies (parents current),authored=copy authoredCopies (authored current)}
   validateWorld next
   pure (root,map idOf ids,next)

@@ -1,6 +1,6 @@
 module Unholy.Application (runApplication) where
 
-import Unholy.Game (SomeGame,findGame,checkGameAssets,gameAssetReferences)
+import Unholy.Game (SomeGame,validateGame,checkGameAssets,gameAssetReferences)
 import qualified Paths_unholy as Paths
 import Unholy.Types
 import Unholy.Project
@@ -30,7 +30,9 @@ runApplication registry = runInBoundThread $ do
     _->do engine<-engineAssets args;makeAbsolute (takeDirectory engine </> "projects" </> "material-lab" </> projectFile)
   loaded<-loadProject path
   p<-either failWith pure loaded
-  _<-either failWith pure (findGame registry p)
+  -- Incomplete authored scenes must remain editable. Gameplay preflight belongs
+  -- to execution/export commands and the editor's Play/Build actions.
+  when (any (`elem` args) ["--check","--build","--play","--simulate"]) (either failWith pure (validateGame registry p))
   sceneAssets<-checkAssets (takeDirectory path) p
   gameAssets<-checkGameAssets registry (takeDirectory path) p
   let missing=sceneAssets++gameAssets

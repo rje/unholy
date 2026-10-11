@@ -3,7 +3,8 @@
 -- hides that type; there is no Dynamic component store or scripting ABI.
 module Unholy.Game
   ( Game(..), SomeGame, game, gameIdentifier, GameContext(..), Step(..), System
-  , Effect(..), checkGameAssets, gameAssetReferences, RunningGame, startGame, tickGame, applyEffects, findGame ) where
+  , Effect(..), checkGameAssets, gameAssetReferences, gameComponents, validateGame, simpleGame, acquireGameResource
+  , RunningGame, startGame, tickGame, applyEffects, findGame ) where
 
 import Unholy.Types
 import Unholy.Input
@@ -11,16 +12,21 @@ import Unholy.Physics
 import qualified Unholy.Audio as Audio
 import Unholy.Project (assetPath,validateProject,checkAssetFiles)
 import Unholy.Exception (trySync)
+import Unholy.Authoring
+import qualified Unholy.Resource as Resource
 import Control.Monad (foldM)
 import Control.Exception (evaluate)
 import Control.DeepSeq (force)
 import System.FilePath ((</>))
 
-data GameContext = GameContext { assetRoot :: FilePath, gamePhysics :: Physics, gameAudio :: Maybe Audio.Engine }
+data GameContext = GameContext { assetRoot :: FilePath, gamePhysics :: Physics, gameAudio :: Maybe Audio.Engine, gameResources :: Resource.Scope }
+acquireGameResource :: GameContext -> IO a -> (a -> IO ()) -> IO a
+acquireGameResource ctx=Resource.acquire (gameResources ctx)
 data Step = Step { deltaTime :: !Float, elapsedTime :: !Float } deriving (Eq,Show)
 type System state = GameContext -> Step -> Input -> state -> Project -> IO (state,Project,[Effect])
 data Game state = Game
-  { identifier :: String, requiredAssets :: [FilePath]
+  { identifier :: String, requiredAssets :: [FilePath], components :: [SomeComponent]
+  , validateScene :: Project -> Either String ()
   , initialize :: GameContext -> Project -> IO (state,Project,[Effect])
   , beforePhysics :: System state
   , afterPhysics :: [CollisionEvent] -> System state }
@@ -28,6 +34,18 @@ data SomeGame = forall state. SomeGame (Game state)
 data RunningGame = forall state. RunningGame (Game state) state
 game :: Game state -> SomeGame
 game=SomeGame
+simpleGame :: String -> state -> Game state
+simpleGame key initialState=Game key [] [] (const (Right ())) (\_ p->pure (initialState,p,[]))
+  (\_ _ _ state p->pure (state,p,[])) (\_ _ _ _ state p->pure (state,p,[]))
+gameComponents :: [SomeGame] -> Project -> Either String [SomeComponent]
+gameComponents registry p=fmap (maybe [] (\(SomeGame definition)->components definition)) (findGame registry p)
+validateGame :: [SomeGame] -> Project -> Either String ()
+validateGame registry p=do
+  validateProject p
+  selected<-findGame registry p
+  case selected of
+    Nothing->Right ()
+    Just (SomeGame definition)->validateComponents (components definition) (world p) >> validateScene definition p
 gameIdentifier :: SomeGame -> String
 gameIdentifier (SomeGame definition)=identifier definition
 findGame :: [SomeGame] -> Project -> Either String (Maybe SomeGame)
@@ -43,11 +61,13 @@ data Effect = Log String | HUD String | Sound FilePath Float Float Bool | Telepo
 startGame :: GameContext -> SomeGame -> Project -> IO (RunningGame,Project,[Effect])
 startGame ctx (SomeGame definition) p=hook definition "initialize" $ do
   (state,next,effects)<-initialize definition ctx p
+  either (ioError.userError) pure (validateComponents (components definition) (world next))
   validate next
   pure (RunningGame definition state,next,effects)
 tickGame :: Bool -> [CollisionEvent] -> GameContext -> Step -> Input -> RunningGame -> Project -> IO (RunningGame,Project,[Effect])
 tickGame after events ctx dt input (RunningGame definition state) p=hook definition (if after then "afterPhysics" else "beforePhysics") $ do
   (nextState,next,effects)<-(if after then afterPhysics definition events else beforePhysics definition) ctx dt input state p
+  either (ioError.userError) pure (validateComponents (components definition) (world next))
   validate next
   pure (RunningGame definition nextState,next,effects)
 validate :: Project -> IO ()

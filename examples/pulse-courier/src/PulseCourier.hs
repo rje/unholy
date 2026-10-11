@@ -18,7 +18,7 @@ data Session = Session
 
 pulseCourier :: SomeGame
 pulseCourier=game Game
-  { identifier="pulse-courier", requiredAssets=map ("assets/audio/"++) ["ambience.wav","jump.wav","gem.wav","finish.wav"]
+  { identifier="pulse-courier", components=[], validateScene=const (Right ()), requiredAssets=map ("assets/audio/"++) ["ambience.wav","jump.wav","gem.wav","finish.wav"]
   , initialize= \_ p->do
       state<-either (ioError.userError) pure (session p)
       pure (state,p,[Log "Pulse Courier: compiled Haskell systems online.",Sound "assets/audio/ambience.wav" 0.12 1 True])

@@ -8,10 +8,12 @@ import qualified Unholy.Renderer.Camera as C
 import qualified Linear as L
 import Unholy.Project
 import qualified Unholy.Native as N
-import Unholy.Game (SomeGame,findGame,checkGameAssets,gameAssetReferences)
+import Unholy.Game (SomeGame,validateGame,checkGameAssets,gameAssetReferences,gameComponents,gameIdentifier)
+import Unholy.Authoring
 import Unholy.Exception (trySync)
 import Unholy.Script
 import qualified Data.IntMap.Strict as IM
+import qualified Data.Map.Strict as M
 import Control.Monad (foldM, forM_, when)
 import System.Directory
 import System.FilePath
@@ -24,7 +26,7 @@ import Data.Time.Clock.POSIX (getPOSIXTime)
 import Control.Exception (finally, evaluate, onException)
 import Control.DeepSeq (force)
 
-data Tab = EntityTab | WorldTab deriving Eq
+data Tab = EntityTab | WorldTab | GameTab deriving Eq
 data Modal = ProjectPicker FilePath [FilePath] | NewProject String | Unsaved FilePath | AddEntity | SavePrefab Entity FilePath deriving Eq
 data Editor = Editor
   { document :: Project, file :: FilePath, live :: Maybe (Runtime,Project)
@@ -35,6 +37,7 @@ data Editor = Editor
   , toolMode :: Gizmo.Mode, dragUndo :: Maybe Project, pendingPrefab :: Maybe FilePath
   , gameRegistry :: [SomeGame]
   , engineAssetsPath :: FilePath
+  , fieldEdit :: Maybe (Int,Project)
   }
 
 viewProject :: Editor -> Project
@@ -54,8 +57,9 @@ editWorld f s = change ((document s) {world=f (world (document s))}) s
 runEditor :: N.Window -> [SomeGame] -> FilePath -> FilePath -> Project -> Maybe Int -> Maybe FilePath -> IO ()
 runEditor window registry engineAssets path p frameLimit capture = do
   a<-listAssets (takeDirectory path)
+  diagnostic<-trySync (evaluate (force (either (:[]) (const []) (validateGame registry p))))
   let initial=Editor p path Nothing (fst <$> IM.lookupMin (names (world p))) False False False
-        ["Ready. Select an entity; F5 plays the project.","Unholy / Haskell renderer + Bullet + Lua"] "" 0 EntityTab True 0 0 0 Nothing [] [] (sort a) Gizmo.Move Nothing Nothing registry engineAssets
+        (["Ready. Select an entity; F5 plays the project.","Unholy / Haskell renderer + Bullet + Lua"]++either (\err->[show err]) id diagnostic) "" 0 EntityTab True 0 0 0 Nothing [] [] (sort a) Gizmo.Move Nothing Nothing registry engineAssets Nothing
   active<-newIORef initial
   loop active 0 initial `finally` (do
     latest<-readIORef active
@@ -129,12 +133,12 @@ advance dt input s = case live s of
 
 startPlay :: N.Window -> Editor -> IO Editor
 startPlay window s | isPlaying s = stopPlay window s
-            | otherwise = do
+            | otherwise = protectPlay window s $ do
   N.clearFocus window
   sceneAssets<-checkAssets (takeDirectory (file s)) (document s)
   gameAssets<-checkGameAssets (gameRegistry s) (takeDirectory (file s)) (document s)
   let missing=sceneAssets++gameAssets
-  let errors=missing++either (:[]) (const []) (findGame (gameRegistry s) (document s))
+  let errors=missing++either (:[]) (const []) (validateGame (gameRegistry s) (document s))
   if not (null errors) then pure (withLogs errors s) else do
     result<-trySync $ do
       started@(runtime,_,messages)<-startRuntimeWith (gameRegistry s) (N.audio window) (takeDirectory (file s)) (document s)
@@ -155,12 +159,15 @@ save s = do
   pure $ case result of Left e->addLog e s;Right ()->addLog "Project saved." s {dirty=False}
 build :: FilePath -> Editor -> IO Editor
 build engine s = do
-  missing<-checkGameAssets (gameRegistry s) (takeDirectory (file s)) (document s)
-  let refs=gameAssetReferences (gameRegistry s) (document s)
-  result<-if null missing then case refs of
-    Left err->pure (Left err)
-    Right paths->buildProjectWithAssets paths (takeDirectory (file s)) engine (document s)
-    else pure (Left (unlines missing))
+  attempted<-trySync $ do
+    missing<-checkGameAssets (gameRegistry s) (takeDirectory (file s)) (document s)
+    let refs=validateGame (gameRegistry s) (document s) >> gameAssetReferences (gameRegistry s) (document s)
+    result<-if null missing then case refs of
+      Left err->pure (Left err)
+      Right paths->buildProjectWithAssets paths (takeDirectory (file s)) engine (document s)
+      else pure (Left (unlines missing))
+    evaluate (force result)
+  let result=either (Left . show) id attempted
   pure $ either (`addLog` s) (\out->addLog ("Built: "++out++"/Play.command") s) result
 
 drawChrome :: N.Window -> Float -> Float -> Editor -> IO Editor
@@ -195,10 +202,12 @@ drawChrome window w h s = do
   N.rect window 0 70 222 (h-96) 1
   N.text window 16 88 13 "SCENE / ENTITIES" 1
   add<-N.button window 146 80 62 29 "+ Add" 0
-  sceneTab<-N.button window (w-310) 80 140 30 "Entity" (if tab state==EntityTab then 3 else 0)
-  worldTab<-N.button window (w-162) 80 145 30 "World / Camera" (if tab state==WorldTab then 3 else 0)
+  sceneTab<-N.button window (w-310) 80 92 30 "Entity" (if tab state==EntityTab then 3 else 0)
+  worldTab<-N.button window (w-210) 80 96 30 "World" (if tab state==WorldTab then 3 else 0)
+  gameTab<-N.button window (w-106) 80 91 30 "Game" (if tab state==GameTab then 3 else 0)
   N.rect window (w-322) 118 322 (h-146) 1
-  let tabs=state {tab=if sceneTab then EntityTab else if worldTab then WorldTab else tab state,modal=if add && not (isPlaying state) then Just AddEntity else modal state}
+  let tabs=state {tab=if sceneTab then EntityTab else if worldTab then WorldTab else if gameTab then GameTab else tab state,modal=if add && not (isPlaying state) then Just AddEntity else modal state}
+  when (tab tabs/=tab state) (N.clearFocus window)
   left<-drawHierarchy window h tabs
   right<-drawInspector window w h left
   bottom<-drawAssets window w h right
@@ -232,7 +241,8 @@ drawHierarchy window h s = do
     pure (if click then Just e else sel)) (selected s) (zip [0..] entries)
   N.unclip window
   N.text window 16 (h-209) 12 "PROJECT ASSETS" 1
-  pure s {selected=picked,hierarchyScroll=offset,inspectorScroll=if picked/=selected s then 0 else inspectorScroll s}
+  when (picked/=selected s) (N.clearFocus window)
+  pure s {selected=picked,hierarchyScroll=offset,inspectorScroll=if picked/=selected s then 0 else inspectorScroll s,fieldEdit=if picked/=selected s then Nothing else fieldEdit s}
 
 drawInspector :: N.Window -> Float -> Float -> Editor -> IO Editor
 drawInspector window w h s = do
@@ -252,9 +262,71 @@ drawInspector window w h s = do
         N.text window x (y+130) 14 "ROTATION" 1
         N.text window x (y+156) 16 (prettyV (rotation t)) 0
     pure s
-    else if tab s==WorldTab then worldInspector window x y s else entityInspector window x y s
+    else case tab s of
+      WorldTab->worldInspector window x y s
+      GameTab->gameInspector window x y s
+      EntityTab->entityInspector window x y s
   N.unclip window
-  pure result {inspectorScroll=scroll}
+  gesture<-N.editGesture window
+  let changed=document result/=document s
+      continuing=case (fieldEdit s,gesture) of (Just (old,_),Just current)->old==current;_->False
+      marker=case gesture of
+        Nothing->Nothing
+        Just ident->if continuing then fieldEdit s else if changed then Just (ident,document s) else Nothing
+      history=if changed && continuing then undo s else undo result
+  pure result {inspectorScroll=scroll,undo=history,fieldEdit=marker}
+
+gameInspector :: N.Window -> Float -> Float -> Editor -> IO Editor
+gameInspector window x y s=do
+  N.text window x y 13 "COMPILED HASKELL GAME" 2
+  let keys=Nothing:map (Just . gameIdentifier) (gameRegistry s)
+      current=haskellGame (document s)
+      nextKey=case dropWhile (/=current) keys of _:value:_->value;_->Nothing
+  choose<-N.button window x (y+25) 287 32 (maybe "Lua / scene only" id current++"  >") 0
+  let chosen=if choose then change ((document s) {haskellGame=nextKey}) s else s
+  case (selected chosen,gameComponents (gameRegistry chosen) (document chosen)) of
+    (_,Left err)->N.text window x (y+72) 13 err 2 >> pure chosen
+    (Nothing,_)->N.text window x (y+72) 14 "Select an entity for gameplay fields." 1 >> pure chosen
+    (Just e,Right definitions)->do
+      (result,_)<-foldM (drawComponent e) (chosen,y+76) (zip [0..] definitions)
+      let registered=[componentKey d | SomeComponent d<-definitions]
+          unknown=[key | key<-M.keys (IM.findWithDefault M.empty e (authored (world (document result)))),key `notElem` registered]
+      forM_ (zip [0..] unknown) $ \(i,key)->N.text window x (y+600+fromIntegral (i::Int)*24) 12 ("Preserved unavailable component: "++key) 2
+      pure result
+  where
+    drawComponent e (state,top) (i,SomeComponent definition)=do
+      let key=componentKey definition
+          w=world (document state)
+          existing=IM.lookup e (authored w) >>= M.lookup key
+      N.text window x top 15 key 2
+      clicked<-N.button window (x+204) (top-4) 83 28 (maybe "Add" (const "Remove") existing) 0
+      if clicked then pure (editWorld (maybe (setComponent definition e (componentDefault definition)) (const (removeComponent key e)) existing) state,top+44)
+      else case existing of
+        Nothing->pure (state,top+44)
+        Just fields->do
+          (edited,endY)<-foldM (drawField e key i) (fields,top+34) (zip [0..] (componentFields definition))
+          let next=editWorld (\currentWorld->currentWorld {authored=IM.adjust (M.insert key edited) e (authored currentWorld)}) state
+          pure (next,endY+18)
+    drawField _ _ group (fields,top) (i,description)=do
+      let key=fieldKey description
+          current=M.lookup key fields
+          ident=2000+group*100+i
+      N.text window x top 12 (fieldLabel description) 1
+      value<-case (fieldKind description,current) of
+        (NumberField lo hi,Just (FloatValue number)) | finite number && number>=lo && number<=hi->do
+          FloatValue <$> N.slider window x top 287 "" number lo hi
+        (TextField,Just (TextValue txt))->TextValue <$> N.textbox window ident x (top+19) 287 30 txt
+        (ToggleField,Just (BoolValue flag))->do
+          toggle<-N.button window x (top+19) 287 30 (if flag then "Enabled" else "Disabled") 0
+          pure (BoolValue (if toggle then not flag else flag))
+        (EntityField,Just (EntityValue ref))->do
+          let w=world (document s); choices=Nothing:map Just (IM.keys (names w))
+              next=case dropWhile (/=ref) choices of _:value:_->value;_->Nothing
+              label=maybe "None" (\e->show e++" / "++IM.findWithDefault "Missing" e (names w)) ref
+          pick<-N.button window x (top+19) 287 30 (label++"  >") 0
+          pure (EntityValue (if pick then next else ref))
+        _->N.text window x (top+22) 12 "Invalid field; remove and re-add component" 2 >> pure (maybe (TextValue "") id current)
+      pure (if current==Nothing then fields else M.insert key value fields,top+61)
 
 vectorFields :: N.Window -> Int -> Float -> Float -> String -> V3 -> IO V3
 vectorFields window ident x y title (V3 a b c) = do
@@ -522,6 +594,7 @@ drawModal window w h s = do
         else pure s {modal=if cancel then Nothing else Just (NewProject name')}
     Just (ProjectPicker path projects)->do
       N.text window (x+24) (y+22) 22 "Load project" 0
+      nextPage<-N.button window (x+470) (y+22) 126 30 "More projects >" 0
       chosen<-foldM (\choice (i,p)->do
         click<-N.button window (x+24) (y+68+fromIntegral (i::Int)*42) 572 34 (takeFileName (takeDirectory p)) 0
         pure (if click then Just p else choice)) Nothing (zip [0..] (take 4 projects))
@@ -534,7 +607,7 @@ drawModal window w h s = do
       let chosen'=if load then Just path' else if isJust chosen then chosen else browsed
       case chosen' of
         Just p->if dirty s then pure s {modal=Just (Unsaved p)} else N.clearFocus window >> loadIntoEditor window p s
-        Nothing->pure s {modal=if cancel then Nothing else Just (ProjectPicker path' projects)}
+        Nothing->pure s {modal=if cancel then Nothing else Just (ProjectPicker path' (if nextPage then drop 4 projects++take 4 projects else projects))}
     Just (Unsaved next)->do
       N.text window (x+24) (y+24) 23 "Save your scene changes?" 0
       N.text window (x+24) (y+92) 16 "This project has unsaved edits." 1

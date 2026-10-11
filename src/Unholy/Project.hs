@@ -4,6 +4,7 @@ import Unholy.Types
 import Unholy.Transform (resolveWorld)
 import Unholy.JSON
 import qualified Data.IntMap.Strict as IM
+import qualified Data.Map.Strict as M
 import Control.Monad (forM, forM_, unless, when, foldM)
 import Control.Exception (IOException, try, onException)
 import System.Directory
@@ -20,7 +21,7 @@ projectFile = "project.hj.json"
 
 projectJSON :: Project -> JSON
 projectJSON p = Object
-  [ ("schemaVersion", Number 1), ("name", String (projectName p)), ("haskellGame", maybe Null String (haskellGame p))
+  [ ("schemaVersion", Number 2), ("name", String (projectName p)), ("haskellGame", maybe Null String (haskellGame p))
   , ("nextId", int (nextId w)), ("entities", Array (map entity (IM.toAscList (names w))))
   , ("camera", Object [("eye",vec (eye c)),("target",vec (target c)),("fov",num (fov c))])
   , ("physics",Object [("gravity",vec (gravity settings)),("supportNormal",num (supportNormal settings)),("supportDistance",num (supportDistance settings))])
@@ -32,18 +33,23 @@ projectJSON p = Object
       ++ optional "mesh" (\m -> Object [("geometry",String (geometry m)),("texture",String (texture m))]) (IM.lookup e (meshes w))
       ++ optional "material" mat (IM.lookup e (materials w))
       ++ optional "script" String (IM.lookup e (scripts w))
+      ++ optional "authored" (Object . map (\(key,fields)->(key,Object [(k,fieldJSON value) | (k,value)<-M.toAscList fields])) . M.toAscList) (IM.lookup e (authored w))
       ++ optional "light" (\l -> Object [("color",vec (lightColor l)),("intensity",num (intensity l))]) (IM.lookup e (lights w))
       ++ optional "parent" (\p' -> Object [("entity",int (parentEntity p')),("local",trans (localTransform p'))]) (IM.lookup e (parents w))
       ++ optional "body" (\b -> Object [("shape",String (if bodyShape b==Box then "box" else "sphere")),("mass",num (mass b)),("velocity",vec (velocity b)),("restitution",num (restitution b)),("friction",num (friction b)),("kinematic",Boolean (kinematic b)),("trigger",Boolean (trigger b)),("linearDamping",num (linearDamping b)),("angularDamping",num (angularDamping b))]) (IM.lookup e (bodies w))
     optional k f = maybe [] (\v -> [(k,f v)])
     trans t = Object [("position",vec (position t)),("rotation",vec (rotation t)),("scale",vec (scale t))]
     mat m = Object [("albedo",vec (albedo m)),("metallic",num (metallic m)),("roughness",num (roughness m)),("emission",num (emission m))]
+    fieldJSON (FloatValue value)=num value
+    fieldJSON (TextValue value)=String value
+    fieldJSON (BoolValue value)=Boolean value
+    fieldJSON (EntityValue ref)=Object [("entity",maybe Null int ref)]
 
 decodeProject :: String -> Either String Project
 decodeProject input = do
   j <- parseJSON input
   version <- field "schemaVersion" j >>= integer
-  unless (version==1) (Left "Unsupported project schema version")
+  unless (version `elem` [1,2]) (Left "Unsupported project schema version")
   n <- field "name" j >>= string
   next <- field "nextId" j >>= integer
   es <- field "entities" j >>= array
@@ -87,6 +93,16 @@ decodeProject input = do
       m <- optional "mesh" (\o -> Mesh <$> (field "geometry" o >>= string) <*> (field "texture" o >>= string))
       mat <- optional "material" (\o -> Material <$> vfield "albedo" o <*> floatField "metallic" o <*> floatField "roughness" o <*> floatField "emission" o)
       script <- optional "script" string
+      gameData <- optional "authored" (\o->object o >>= mapM (\(key,value)->do
+        fs<-object value >>= mapM (\(k,v)->do
+          decoded<-case v of
+            Number _->FloatValue <$> (number v >>= finiteFloat)
+            String txt->Right (TextValue txt)
+            Boolean flag->Right (BoolValue flag)
+            Object _->do ref<-field "entity" v; EntityValue <$> (case ref of Null->Right Nothing;_->Just <$> integer ref)
+            _->Left "Invalid authored field"
+          pure (k,decoded))
+        pure (key,M.fromList fs)) >>= pure . M.fromList)
       light <- optional "light" (\o -> Light <$> vfield "color" o <*> floatField "intensity" o)
       parent <- optional "parent" (\o -> do
         owner<-field "entity" o >>= integer
@@ -100,7 +116,7 @@ decodeProject input = do
           <*> optionalField "linearDamping" (floatField "linearDamping" o) 0.04 o
           <*> optionalField "angularDamping" (floatField "angularDamping" o) 0.08 o)
       let put v table = maybe table (\x -> IM.insert e x table) v
-      pure w {names=IM.insert e n (names w),transforms=IM.insert e tr (transforms w),meshes=put m (meshes w),materials=put mat (materials w),scripts=put script (scripts w),lights=put light (lights w),bodies=put body (bodies w),parents=put parent (parents w)}
+      pure w {names=IM.insert e n (names w),transforms=IM.insert e tr (transforms w),meshes=put m (meshes w),materials=put mat (materials w),scripts=put script (scripts w),lights=put light (lights w),bodies=put body (bodies w),parents=put parent (parents w),authored=put gameData (authored w)}
 
 validateProject :: Project -> Either String ()
 validateProject p = do

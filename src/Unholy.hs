@@ -2,6 +2,7 @@
 module Unholy
   ( module Unholy.Engine, module Unholy.Types, module Unholy.Transform, module Unholy.Game
   , module Unholy.Input, module Unholy.Physics
+  , module Unholy.Authoring
   , stepGame, Runtime, startRuntimeWith, stepRuntime, stopRuntime, runApplication
   , loadProject, saveProject, buildProject, buildProjectWithAssets, validateProject, projectFile ) where
 
@@ -11,6 +12,7 @@ import Unholy.Transform
 import Unholy.Game
 import Unholy.Input
 import Unholy.Physics
+import Unholy.Authoring
 import Unholy.Script (Runtime,startRuntimeWith,stepRuntime,stopRuntime)
 import Unholy.Application (runApplication)
 import Unholy.Project (loadProject,saveProject,buildProject,buildProjectWithAssets,validateProject,projectFile)

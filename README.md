@@ -81,6 +81,7 @@ during play. Restart play after modifying a Lua source file to reload it.
 | Material Lab | Inspect the two rows of spheres and animated ring | GGX metal/roughness, point lights, emissive materials, Lua animation |
 | Marble Run / Aether Gardens | Follow the blue lights, jump the gap, reach the checkpoint, cross the sliding bridge to the gold arch; ride the left lift to the bonus balcony | Textured beveled decks and suspended gardens, sun shadows/fog, kinematic platforms and rotating sweeper, parented platform assemblies, trigger checkpoints/finish, collectible gem prefabs, runtime crate spawning/destruction, collision sounds and ambience, win/restart |
 | Pulse Courier | Roll through three orange relay cores and deliver to the green portal; E dashes | Independently packaged Haskell game, typed custom components and systems, trigger scoring, Haskell camera/audio, kinematic shuttles, all Haskell primitive geometry |
+| Circuit Breaker | Roll onto blue pads, press E to open linked doors, reach the green portal | Persistent typed Haskell configuration, Game inspector, remapped entity links, prefab assemblies, Bullet triggers and moving doors |
 | Knockdown | Ram all eight orange towers with the steel ball | Dynamic box/sphere collisions, rolling and toppling, Lua scoring, material changes, win/restart |
 
 All games use **WASD/arrows**, **Space** to jump/hop, and **R** to restart.
@@ -96,15 +97,21 @@ ends it. The source art and generation notes are in
 `import Unholy` to author a game with statically typed state, explicit engine
 resources and before/after-physics systems. Put custom components in
 `Unholy.ECS.Components a`. The editor, exported player, tests and independently
-built sample all use the same Cabal library.
+built samples all use the same Cabal library. Persistent `Component a` definitions
+provide explicit codecs and inspector fields; runtime state remains typed Haskell.
+Game resources use an explicit scope with automatic cleanup on Stop or failure.
 
 ```sh
 cabal build pulse-courier
 cabal run pulse-courier -- projects/pulse-courier/project.hj.json
+cabal run circuit-breaker -- projects/circuit-breaker/project.hj.json
+python3 scripts/new-game.py /path/to/my-game --name my-game
 ```
 
 See the [Haskell API guide](docs/haskell-api.md) and
 [Pulse Courier source and instructions](examples/pulse-courier/README.md).
+[Circuit Breaker](examples/circuit-breaker/README.md) demonstrates authored fields
+and produces an independent starter package without editing engine source.
 Haskell source changes require recompilation. Lua remains available for scripts.
 
 ## Lua

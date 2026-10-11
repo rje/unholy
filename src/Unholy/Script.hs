@@ -3,12 +3,12 @@
 module Unholy.Script (Runtime, startRuntime, startRuntimeWith, stopRuntime, stepRuntime) where
 
 import Unholy.Types
-import Unholy.Project (validateProject)
 import Unholy.Physics
 import qualified Unholy.Game as Game
 import Unholy.Input (Input(..))
 import qualified Unholy.Script.API as API
 import qualified Unholy.Audio as Audio
+import qualified Unholy.Resource as Resource
 import qualified HsLua.Core as Lua
 import qualified Data.IntMap.Strict as IM
 import Data.IORef
@@ -16,13 +16,14 @@ import Foreign.Ptr (Ptr, castPtr)
 import Foreign.C (CInt(..))
 import System.FilePath ((</>))
 import Control.Monad (foldM, when, void)
-import Control.Exception (try, onException, finally)
+import Control.Exception (try, onException, finally, mask, mask_, catch, SomeException, displayException)
+import System.IO (hPutStrLn,stderr)
 
 data VM = VM FilePath Lua.State Lua.Reference API.Context (IORef Bool)
 data Runtime = Runtime
   { virtualMachines :: IM.IntMap VM, physics :: Physics
   , projectRoot :: FilePath, disabledScripts :: IM.IntMap FilePath
-  , audioEngine :: Maybe Audio.Engine, runningGame :: Maybe Game.RunningGame, clock :: Float, ownedVMs :: IORef (IM.IntMap VM), runtimeClosed :: IORef Bool }
+  , audioEngine :: Maybe Audio.Engine, runningGame :: Maybe Game.RunningGame, clock :: Float, ownedVMs :: IORef (IM.IntMap VM), runtimeClosed :: IORef Bool, gameScope :: Resource.Scope }
 foreign import ccall unsafe "hj_lua_budget" cBudget :: Ptr () -> CInt -> IO ()
 budget :: Lua.State -> Bool -> IO ()
 budget (Lua.State ptr) enabled = cBudget (castPtr ptr) (if enabled then 1 else 0)
@@ -36,16 +37,17 @@ vmPath (VM path _ _ _ _) = path
 startRuntime :: FilePath -> Project -> IO (Runtime,Project,[String])
 startRuntime = startRuntimeWith [] Nothing
 startRuntimeWith :: [Game.SomeGame] -> Maybe Audio.Engine -> FilePath -> Project -> IO (Runtime,Project,[String])
-startRuntimeWith registry sound root p = do
-  either (ioError.userError) pure (validateProject p)
+startRuntimeWith registry sound root p = mask $ \restore -> do
+  either (ioError.userError) pure (Game.validateGame registry p)
   definition<-either (ioError.userError) pure (Game.findGame registry p)
   missing<-Game.checkGameAssets registry root p
   when (not (null missing)) (ioError (userError (unlines missing)))
   phy<-createPhysics (world p)
   owned<-newIORef IM.empty
   closed<-newIORef False
-  let ctx=Game.GameContext root phy sound
-      cleanup=(readIORef owned >>= mapM_ closeVM) `finally` (closePhysics phy `finally` mapM_ Audio.stopOn sound)
+  scope<-Resource.newScope
+  let ctx=Game.GameContext root phy sound scope
+      cleanup=Resource.closeScope scope `finally` ((readIORef owned >>= mapM_ closeVM) `finally` (closePhysics phy `finally` mapM_ Audio.stopOn sound))
       initialize=do
         (active,prepared,startLogs)<-case definition of
           Nothing->pure (Nothing,p,[])
@@ -54,17 +56,19 @@ startRuntimeWith registry sound root p = do
             (logs,_)<-Game.applyEffects ctx effects
             pure (Just running,next,logs)
         configurePhysics phy (physicsSettings prepared)
-        let runtime=Runtime IM.empty phy root IM.empty sound active 0 owned closed
+        let runtime=Runtime IM.empty phy root IM.empty sound active 0 owned closed scope
         (r,next,logs,_)<-reconcile runtime prepared
         synchronizePhysics phy (world next)
         pure (r,next,startLogs++logs)
-  initialize `onException` cleanup
+      reportCleanup :: SomeException -> IO ()
+      reportCleanup err=hPutStrLn stderr ("Game cleanup after initialization failure: "++displayException err)
+  restore initialize `onException` (cleanup `catch` reportCleanup)
 stopRuntime :: Runtime -> IO ()
-stopRuntime r = do
+stopRuntime r = mask_ $ do
   closed<-atomicModifyIORef' (runtimeClosed r) (\x->(True,x))
   when (not closed) $
-    (atomicModifyIORef' (ownedVMs r) (\xs->(IM.empty,xs)) >>= mapM_ closeVM) `finally`
-      (closePhysics (physics r) `finally` mapM_ Audio.stopOn (audioEngine r))
+    Resource.closeScope (gameScope r) `finally` ((atomicModifyIORef' (ownedVMs r) (\xs->(IM.empty,xs)) >>= mapM_ closeVM) `finally`
+      (closePhysics (physics r) `finally` mapM_ Audio.stopOn (audioEngine r)))
 
 -- Scripts may spawn other scripts from start. Bound that work per frame, while
 -- failed scripts remain disabled until their component changes or is removed.
@@ -140,7 +144,7 @@ stepRuntime dt input r p = do
     runGame after events runtime current=case runningGame runtime of
       Nothing->pure (runtime,current,[],"")
       Just running->do
-        let ctx=Game.GameContext (projectRoot runtime) (physics runtime) (audioEngine runtime)
+        let ctx=Game.GameContext (projectRoot runtime) (physics runtime) (audioEngine runtime) (gameScope runtime)
             values=input++repeat 0
             controls=Input (values!!0) (values!!1) (values!!2>0.5) (values!!3>0.5) (values!!4>0.5)
         (updated,next,effects)<-Game.tickGame after events ctx (Game.Step dt (clock runtime+dt)) controls running current

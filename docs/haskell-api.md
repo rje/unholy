@@ -1,7 +1,7 @@
 # Authoring games in Haskell
 
 `unholy.cabal` provides an importable library. Editor, player, tests, and the
-independent `examples/pulse-courier` package link that library. Start with
+independent Pulse Courier and Circuit Breaker packages link that library. Start with
 `import Unholy`; game-owned components are in `Unholy.ECS`.
 
 A game defines statically typed state and three hooks:
@@ -13,6 +13,8 @@ myGame :: SomeGame
 myGame = game Game
   { identifier = "my-game"
   , requiredAssets = []
+  , components = []
+  , validateScene = const (Right ())
   , initialize = \_ project -> pure (State 0, project, [])
   , beforePhysics = \_ dt _ state project ->
       pure (state {elapsed = elapsed state + deltaTime dt}, project, [])
@@ -43,7 +45,7 @@ assets or installed Cabal data; `--engine-assets` explicitly selects a directory
 
 `System state` is an ordinary Haskell function receiving explicit `GameContext`,
 `Step`, `Input`, typed state, and `Project`. `GameContext` owns the project asset
-root, Bullet world and optional audio engine. Headless simulation supplies no
+root, Bullet world, optional audio engine and a game resource scope. Headless simulation supplies no
 audio device. `deltaTime` is the fixed tick length; `elapsedTime` is runtime
 elapsed time. `Input` names movement axes, jump, restart and action. Input is
 held state; use fields in your game state to detect edges, as Pulse Courier does.
@@ -58,9 +60,27 @@ is trusted code, and can perform ordinary IO. Effects are not transactional.
 `Unholy.ECS.Components a` keeps game-owned components statically typed.
 `query world components` joins against live entity IDs and `prune` releases
 removed components. Put components in your game's state; the engine does not
-require a heterogeneous store or `Dynamic`. These components are runtime-only;
-provide your own persistence if needed. Built-in World components serialize in
-project JSON and appear in the editor.
+require a heterogeneous store or `Dynamic`. For persistent authored configuration,
+define a `Component a` with a stable key, default, explicit encode/decode functions
+and `Field` descriptions. Register `SomeComponent` values in the game's `components`.
+The editor's Game inspector edits number, text, boolean and entity-reference fields.
+`setComponent` stores configuration; `readComponents` decodes it into typed stores.
+Circuit Breaker demonstrates decoding once during initialization and keeping mutable
+session state separately. Unknown component keys and fields survive saves.
+
+Project schema 2 writes authored data and reads schema 1 scenes. Entity references
+remap within duplicated assemblies and instantiated prefabs; same-world duplicates
+retain external links. Prefab capture rejects external links. Deleting a target
+clears its reference. Incomplete links remain editable and saveable; `validateScene`
+enforces game-specific requirements before Play, simulation or export. Errors identify
+the entity and component or field. Component and field registrations must be unique.
+
+Use `acquireGameResource context allocate release` for game-owned IO resources.
+The shared runtime scope releases in reverse acquisition order, exactly once, before
+Bullet and audio shutdown. It closes on failed initialization, editor Stop, project
+switch and gameplay failure. Cleanup attempts all registered releases even if one
+fails; failed initialization retains its original exception. Acquisition and
+registration are masked against asynchronous cancellation, like `bracket`.
 
 `Log`, `HUD`, `Sound`, and `Teleport` effects route through explicit resources.
 List sounds and other game-owned assets in `requiredAssets`; editor/CLI check
@@ -82,3 +102,7 @@ a time, and graphics calls must remain on the owning thread.
 for tooling and tests; the `Unholy` facade is the intended game-authoring surface.
 There is no stable API/ABI guarantee at version 0.1. Haskell games require a
 rebuild when source changes; there is no runtime GHC compiler or plugin loader.
+
+`python3 scripts/new-game.py /path/to/my-game --name my-game` creates a separately
+built playable package with its own scene and source, pinned to the public engine
+revision. Use `--engine-local /path/to/unholy` during engine development.

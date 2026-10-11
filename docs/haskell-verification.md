@@ -30,6 +30,26 @@ and Cabal's bundled Lua 5.4.8. Linux remains configured but untested.
 
 ## Library and simulation
 
+## Persistent Haskell authoring checkpoint
+
+The authoring increment passes 20 engine integration groups and both independently
+packaged game loops. Circuit Breaker completes with every entity renamed, then
+restarts the completed runtime with both doors closed and authored data intact.
+Resource checks exercise LIFO, once-only shutdown across returned handles, failed
+initialization, and failing cleanup that preserves the original startup error.
+
+`python3 scripts/verify-haskell-authoring.py` drives the actual editor. It edits
+door speed to 9.451, undoes/redoes the whole slider gesture, duplicates a linked
+assembly, saves and reloads. The cloned switch points to the cloned door. A scene
+with an unset target opens for repair and fails explicit Play/build validation.
+Captures and disposable scenes are in `build/verification/typed-authoring/`.
+
+A generated package in `/tmp/unholy-m2-independent` compiles and passes its puzzle
+test against the local library without engine source edits. Circuit Breaker's
+real editor and its independent exported player both reach the completed circuit.
+The captures are `build/verification/circuit-editor.png` and `circuit-export.png`.
+The public-revision starter path is qualified in the clean-build checkpoint.
+
 `cabal build all --enable-tests` builds the library, editor, independent sample
 executable and both test packages. The engine's Haskell modules and native
 adapters compile once into the library; the sample depends on that library.
@@ -103,7 +123,7 @@ and tooling. It describes engine ownership, not the implementation language of
 the graphics driver, solver or decoder dependencies.
 
 Compiled game source changes require a rebuild; no runtime Haskell plugin
-loader is included. Custom Haskell components are typed runtime state rather
-than auto-generated inspector/serialization fields. See the Haskell API guide
+loader is included. Persistent authored components use explicit typed codecs and
+inspector descriptions; mutable session state stays separate. See the Haskell API guide
 and sample README for these contracts. This is a local development build,
 not a notarized release or cross-platform qualification.
